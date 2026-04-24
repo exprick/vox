@@ -35,7 +35,7 @@ fi
 
 if [ ${#errors[@]} -eq 0 ]; then
     secret_pat='(sk-[a-zA-Z0-9_-]{20,}|sk-ant-[a-zA-Z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|AIza[0-9A-Za-z_-]{35})'
-    if git diff --cached -U0 2>/dev/null | grep -E '^\+[^+]' | grep -qE "$secret_pat"; then
+    if git diff --cached -U0 2>/dev/null | grep '^+' | grep -v '^+++ ' | grep -qE "$secret_pat"; then
         errors+=("staged 改动里疑似有 API key — unstage 并把 key 挪到 .env / shell 环境变量")
     fi
 fi
