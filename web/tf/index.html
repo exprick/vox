@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vox Truthfile</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="tf-page">
+  <nav class="nav">
+    <div class="brand">Vox <span class="tag">Truthfile</span></div>
+    <div class="links">
+      <a class="active" href="/tf/">当前方向</a>
+      <a href="/voice-course/">Voice Course</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <header class="tf-hero">
+      <div class="tf-kicker">Web App First</div>
+      <h1>Vox 先做 Web App：Google 登录后，进入一屏自然对话课。</h1>
+      <p>Vox 现在按多用户产品来做。每个用户先登录，再开始对话、练习和复盘；记忆、进度、用量都跟着自己的账号走。</p>
+    </header>
+
+    <section class="tf-status">
+      <div class="tf-status-main">
+        <div class="tf-label">Current Decision</div>
+        <h2>Google 登录 + Supabase 记忆</h2>
+        <p>第一版只做 Web App，不做 iOS 登录闭环。Google 负责确认身份，Vox 自己用早期白名单决定谁能进入，Supabase 保存每个用户自己的学习记录。</p>
+      </div>
+      <div class="tf-status-side">
+        <strong>Web only</strong>
+        <span>iOS 暂停</span>
+        <em>先把网页端的登录、对话、练习、记忆跑顺，再评估 iOS。</em>
+      </div>
+    </section>
+
+    <section>
+      <h2>登录方案 <span class="desc">先解决能安全区分用户，再做更多登录方式。</span></h2>
+      <div class="tf-card-grid">
+        <article class="tf-card">
+          <div class="tf-card-index">1</div>
+          <h3>Google 登录</h3>
+          <p>用户用自己的 Google 账号进入 Vox。Vox 不保存密码，也不要求用户再记一套账号。</p>
+        </article>
+        <article class="tf-card">
+          <div class="tf-card-index">2</div>
+          <h3>早期白名单</h3>
+          <p>Google 登录不等于任何人都能用。第一阶段只允许白名单里的邮箱或域名进入。</p>
+        </article>
+        <article class="tf-card">
+          <div class="tf-card-index">3</div>
+          <h3>用户记忆隔离</h3>
+          <p>每个用户的偏好、对话总结、练习进度和用量都绑定到自己的账号，不和其他人混在一起。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>为什么这样做 <span class="desc">当前目标是最快拿到可靠的多用户 Web App。</span></h2>
+      <div class="tf-memory-list">
+        <div>
+          <strong>摩擦最小</strong>
+          <span>Google 登录比自建密码系统更快，也少了找回密码、密码安全、验证码滥用这些早期负担。</span>
+        </div>
+        <div>
+          <strong>边界清楚</strong>
+          <span>登录确认“你是谁”，白名单决定“你能不能进”。这两个问题分开，后面更容易扩展。</span>
+        </div>
+        <div>
+          <strong>后续可加</strong>
+          <span>如果真实用户被 Google 卡住，再加邮箱 magic link；现在先不为了假设需求增加复杂度。</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>上线前检查 <span class="desc">避免登录能进、数据却串人的问题。</span></h2>
+      <ol class="tf-steps">
+        <li>生产域名、预览域名、本地开发地址都要加入 Google 授权回调。</li>
+        <li>所有用户数据都必须带用户身份；没有身份的数据不能进入正式记忆。</li>
+        <li>白名单在后端判断，不能只靠前端隐藏按钮。</li>
+        <li>生产环境不保留免登录入口；测试入口只能用于本地或受控预览。</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Vox Truthfile</span>
+    <span>Web App first, iOS later.</span>
+  </footer>
+</body>
+</html>
