@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vox Voice Course</title>
+  <style>
+    :root {
+      --bg: #f3dfca;
+      --bg-deep: #d2a18f;
+      --ink: #27140f;
+      --ink-soft: rgba(39, 20, 15, 0.62);
+      --ink-mute: rgba(39, 20, 15, 0.38);
+      --accent: #b64235;
+      --accent-soft: #df826f;
+      --paper: rgba(255, 246, 236, 0.62);
+      --paper-strong: rgba(255, 246, 236, 0.84);
+      --line: rgba(39, 20, 15, 0.12);
+      --serif: Georgia, "Times New Roman", "Songti SC", serif;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(900px 620px at 50% -12%, #f9eadb 0%, rgba(249, 234, 219, 0) 64%),
+        radial-gradient(700px 520px at 55% 112%, rgba(180, 66, 53, 0.22) 0%, rgba(180, 66, 53, 0) 72%),
+        #1a1410;
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 22px;
+      overflow: hidden;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .phone {
+      position: relative;
+      width: min(100%, 430px);
+      height: min(900px, calc(100vh - 44px));
+      min-height: 720px;
+      border-radius: 46px;
+      overflow: hidden;
+      background:
+        radial-gradient(120% 78% at 50% 0%, #edc7aa 0%, rgba(237, 199, 170, 0) 62%),
+        radial-gradient(112% 68% at 50% 104%, rgba(180, 66, 53, 0.20) 0%, rgba(180, 66, 53, 0) 66%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+      box-shadow: 0 34px 90px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(255, 255, 255, 0.16);
+      isolation: isolate;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(72% 44% at 22% 22%, rgba(255, 242, 226, 0.48), transparent 64%),
+        linear-gradient(90deg, rgba(255,255,255,0.08), transparent 42%, rgba(44,18,12,0.04));
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: max(30px, env(safe-area-inset-top)) 24px max(18px, env(safe-area-inset-bottom));
+    }
+
+    .hdr {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 4px 2px 8px;
+      min-height: 58px;
+    }
+
+    .brand {
+      font: italic 30px/1 var(--serif);
+      letter-spacing: 0;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .level {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(255, 246, 236, 0.36);
+      color: var(--ink-soft);
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .level i,
+    .zh-toggle i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(180, 66, 53, 0.38);
+    }
+
+    .session-meta {
+      margin-left: auto;
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.18em;
+      white-space: nowrap;
+    }
+
+    .transcript-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      margin: 6px -24px 0;
+      overflow: hidden;
+    }
+
+    .transcript {
+      height: 100%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 44px 28px 18px;
+      scrollbar-width: none;
+      mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
+    }
+    .transcript::-webkit-scrollbar { display: none; }
+
+    .turns {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 23px;
+    }
+
+    .turn {
+      display: grid;
+      gap: 7px;
+    }
+
+    .who {
+      font: italic 14px/1.1 var(--serif);
+      color: var(--ink-soft);
+    }
+
+    .en {
+      margin: 0;
+      font: 25px/1.17 var(--serif);
+      color: rgba(39, 20, 15, 0.58);
+      letter-spacing: 0;
+      text-wrap: pretty;
+    }
+
+    .zh {
+      margin: 0;
+      max-height: 90px;
+      overflow: hidden;
+      color: var(--ink-mute);
+      font-size: 14px;
+      line-height: 1.55;
+      transition: opacity 180ms ease, max-height 240ms ease, margin 240ms ease;
+    }
+
+    .turn.current .en {
+      color: var(--ink);
+      font-size: clamp(28px, 7vw, 33px);
+    }
+
+    .turn.current .zh {
+      color: rgba(39, 20, 15, 0.66);
+      font-size: 15px;
+    }
+
+    .turn.learner .who { color: rgba(180, 66, 53, 0.64); }
+    .turn.learner .en {
+      font-style: italic;
+      color: rgba(180, 66, 53, 0.70);
+      font-size: 23px;
+    }
+    .turn.learner.current .en {
+      color: rgba(180, 66, 53, 0.90);
+      font-size: clamp(25px, 6.2vw, 30px);
+    }
+
+    .hide-zh .zh {
+      max-height: 0;
+      opacity: 0;
+      margin: -7px 0 0;
+    }
+
+    .state {
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--ink-soft);
+      font: italic 15px/1 var(--serif);
+      padding: 4px 0 0;
+    }
+
+    .dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .dots b {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: breathe 1.35s ease-in-out infinite;
+    }
+    .dots b:nth-child(2) { animation-delay: 160ms; }
+    .dots b:nth-child(3) { animation-delay: 320ms; }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.34; transform: scale(0.62); }
+      50% { opacity: 1; transform: scale(1.08); }
+    }
+
+    .control-strip {
+      display: grid;
+      gap: 10px;
+      padding-top: 8px;
+    }
+
+    .utility {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 38px;
+    }
+
+    .zh-toggle,
+    .icon-btn {
+      border: 0;
+      background: transparent;
+      color: var(--ink-soft);
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .zh-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 12px;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .zh-toggle[aria-pressed="false"] i {
+      background: rgba(39, 20, 15, 0.28);
+      box-shadow: none;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+    }
+
+    .icon-btn svg { display: block; }
+
+    .primary-row {
+      display: grid;
+      grid-template-columns: 1fr 56px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .mic-btn,
+    .restart-btn {
+      border: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mic-btn {
+      min-width: 0;
+      height: 58px;
+      border-radius: 999px;
+      background: var(--ink);
+      color: #fff6ec;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      box-shadow: 0 12px 32px rgba(39, 20, 15, 0.18);
+    }
+
+    .mic-btn.live {
+      background: var(--accent);
+      animation: micPulse 1.6s ease-out infinite;
+    }
+
+    @keyframes micPulse {
+      0% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0.30); }
+      72% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 18px rgba(180, 66, 53, 0); }
+      100% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0); }
+    }
+
+    .wave {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      height: 18px;
+    }
+    .wave i {
+      width: 3px;
+      border-radius: 3px;
+      background: currentColor;
+      animation: bar 880ms ease-in-out infinite;
+    }
+    .wave i:nth-child(1) { height: 7px; animation-delay: 0ms; }
+    .wave i:nth-child(2) { height: 13px; animation-delay: 90ms; }
+    .wave i:nth-child(3) { height: 18px; animation-delay: 180ms; }
+    .wave i:nth-child(4) { height: 11px; animation-delay: 270ms; }
+    .wave i:nth-child(5) { height: 8px; animation-delay: 360ms; }
+
+    @keyframes bar {
+      0%, 100% { transform: scaleY(0.48); }
+      50% { transform: scaleY(1); }
+    }
+
+    .restart-btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(255, 246, 236, 0.42);
+      color: var(--ink-soft);
+      border: 0.5px solid rgba(255,255,255,0.40);
+    }
+
+    .sheet-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      background: rgba(39, 20, 15, 0.10);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .sheet {
+      position: absolute;
+      z-index: 9;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      background: var(--paper-strong);
+      color: var(--ink);
+      border-radius: 28px;
+      padding: 18px;
+      transform: translateY(calc(100% + 18px));
+      transition: transform 260ms cubic-bezier(.2,.75,.2,1);
+      box-shadow: 0 24px 70px rgba(39, 20, 15, 0.24);
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+      border: 0.5px solid rgba(255,255,255,0.48);
+    }
+
+    .sheet.open { transform: translateY(0); }
+    .sheet-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sheet-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .sheet-title {
+      font: italic 21px/1.1 var(--serif);
+      margin: 0;
+    }
+
+    .sheet-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      padding: 4px;
+      border-radius: 16px;
+      background: rgba(39, 20, 15, 0.06);
+      margin-bottom: 15px;
+    }
+
+    .sheet-tab {
+      border: 0;
+      border-radius: 12px;
+      padding: 9px 6px;
+      background: transparent;
+      color: var(--ink-soft);
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    .sheet-tab.active {
+      background: rgba(255, 255, 255, 0.62);
+      color: var(--ink);
+      box-shadow: 0 1px 4px rgba(39, 20, 15, 0.08);
+    }
+
+    .setting-list {
+      display: grid;
+      gap: 0;
+    }
+
+    .setting {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 14px;
+      min-height: 44px;
+      border-top: 0.5px solid var(--line);
+      padding: 11px 0;
+    }
+
+    .setting span:first-child {
+      color: var(--ink-soft);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .setting span:last-child {
+      font: italic 16px/1.25 var(--serif);
+      text-align: right;
+    }
+
+    .close-sheet {
+      border: 0;
+      border-radius: 999px;
+      width: 34px;
+      height: 34px;
+      background: transparent;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-size: 20px;
+    }
+
+    @media (max-width: 520px) {
+      body {
+        padding: 0;
+        display: block;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .app {
+        padding-left: 22px;
+        padding-right: 22px;
+      }
+      .transcript-wrap { margin-left: -22px; margin-right: -22px; }
+      .transcript { padding-left: 26px; padding-right: 26px; }
+    }
+
+    @media (max-height: 760px) {
+      .phone { min-height: 0; }
+      .app { padding-top: 22px; }
+      .hdr { min-height: 50px; }
+      .transcript { padding-top: 24px; }
+      .turns { gap: 18px; }
+      .turn.current .en { font-size: 27px; }
+      .en { font-size: 23px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" aria-label="Vox voice course web prototype">
+    <div class="app">
+      <header class="hdr">
+        <div class="brand">Vox</div>
+        <button class="level" type="button" id="levelButton"><i></i><span>初级+</span></button>
+        <div class="session-meta" id="sessionMeta">READY</div>
+      </header>
+
+      <section class="transcript-wrap" aria-label="Conversation transcript">
+        <div class="transcript" id="transcript">
+          <div class="turns" id="turns"></div>
+        </div>
+      </section>
+
+      <div class="state" id="stateRow"></div>
+
+      <section class="control-strip" aria-label="Voice controls">
+        <div class="utility">
+          <button class="zh-toggle" type="button" id="zhToggle" aria-pressed="true"><i></i><span>中</span></button>
+          <button class="icon-btn" type="button" id="moreButton" aria-label="More settings">
+            <svg width="20" height="6" viewBox="0 0 20 6" aria-hidden="true">
+              <circle cx="3" cy="3" r="2.2" fill="currentColor"></circle>
+              <circle cx="10" cy="3" r="2.2" fill="currentColor"></circle>
+              <circle cx="17" cy="3" r="2.2" fill="currentColor"></circle>
+            </svg>
+          </button>
+        </div>
+        <div class="primary-row">
+          <button class="mic-btn" type="button" id="micButton"></button>
+          <button class="restart-btn" type="button" id="restartButton" aria-label="Restart">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3M3.5 4.5v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="sheet-backdrop" id="sheetBackdrop"></div>
+    <aside class="sheet" id="settingsSheet" aria-label="Settings">
+      <div class="sheet-head">
+        <h2 class="sheet-title">Today</h2>
+        <button class="close-sheet" type="button" id="closeSheet" aria-label="Close">×</button>
+      </div>
+      <div class="sheet-tabs" role="tablist" aria-label="Settings sections">
+        <button class="sheet-tab active" type="button" data-panel="course">Course</button>
+        <button class="sheet-tab" type="button" data-panel="memory">Memory</button>
+        <button class="sheet-tab" type="button" data-panel="audio">Audio</button>
+      </div>
+      <div class="setting-list" id="settingsBody"></div>
+    </aside>
+  </main>
+
+  <script>
+    const script = [
+      { who: "learner", en: "I want to order coffee.", zh: "我想点咖啡。" },
+      { who: "vox", en: "Good. You can say: “Can I get a small latte?”", zh: "很好。可以这样说：“Can I get a small latte?”" },
+      { who: "vox", en: "Now try it once. Keep it short and natural.", zh: "现在你试一次。短一点，自然一点。" },
+      { who: "learner", en: "Can I get a small latte?", zh: "我可以要一杯小杯拿铁吗？" },
+      { who: "vox", en: "Almost. Make “can” softer, like asking a favor.", zh: "差不多。把 “can” 说轻一点，像是请人帮忙。" },
+      { who: "learner", en: "Can I get a small latte, please?", zh: "请给我一杯小杯拿铁。" },
+      { who: "vox", en: "That's it. Warm and easy. One more time.", zh: "对了。温和、自然。再来一次。" }
+    ];
+
+    const settingsPanels = {
+      course: [
+        ["Level", "初级+ · A2"],
+        ["Focus", "Ordering coffee"],
+        ["Pace", "Short turns"],
+        ["Mode", "Voice first"]
+      ],
+      memory: [
+        ["This week", "Ordering · small talk"],
+        ["Repeated", "articles, prepositions"],
+        ["Preference", "Example before drill"],
+        ["Chinese", "Tiny toggle"]
+      ],
+      audio: [
+        ["Mic", "Ready"],
+        ["Vox", "Warm, short"],
+        ["Interrupt", "Allowed"],
+        ["Review", "Scroll transcript"]
+      ]
+    };
+
+    const el = {
+      turns: document.getElementById("turns"),
+      transcript: document.getElementById("transcript"),
+      zhToggle: document.getElementById("zhToggle"),
+      micButton: document.getElementById("micButton"),
+      restartButton: document.getElementById("restartButton"),
+      stateRow: document.getElementById("stateRow"),
+      sessionMeta: document.getElementById("sessionMeta"),
+      moreButton: document.getElementById("moreButton"),
+      levelButton: document.getElementById("levelButton"),
+      sheet: document.getElementById("settingsSheet"),
+      sheetBackdrop: document.getElementById("sheetBackdrop"),
+      closeSheet: document.getElementById("closeSheet"),
+      settingsBody: document.getElementById("settingsBody")
+    };
+
+    let showChinese = true;
+    let shown = 2;
+    let running = false;
+    let phase = "idle";
+    let timer = null;
+    let sticky = true;
+    let panel = "course";
+
+    function nearBottom() {
+      return el.transcript.scrollHeight - el.transcript.scrollTop - el.transcript.clientHeight < 42;
+    }
+
+    function scrollToBottom() {
+      if (!sticky) return;
+      el.transcript.scrollTo({ top: el.transcript.scrollHeight, behavior: "smooth" });
+    }
+
+    function renderTurns() {
+      const items = script.slice(0, shown);
+      el.turns.innerHTML = items.map((line, index) => {
+        const current = index === items.length - 1 ? " current" : "";
+        const role = line.who === "learner" ? " learner" : "";
+        const hide = showChinese ? "" : " hide-zh";
+        const who = line.who === "learner" ? "Learner" : "Vox";
+        return `
+          <article class="turn${role}${current}${hide}">
+            <div class="who">${who}</div>
+            <p class="en">${line.en}</p>
+            <p class="zh">${line.zh}</p>
+          </article>
+        `;
+      }).join("");
+      requestAnimationFrame(scrollToBottom);
+    }
+
+    function stateMarkup() {
+      if (phase === "listening") {
+        return `<span class="dots" aria-hidden="true"><b></b><b></b><b></b></span><span>Listening</span>`;
+      }
+      if (phase === "thinking") return `<span style="letter-spacing:.28em">· · ·</span>`;
+      if (phase === "ended") return `<span>End of segment</span>`;
+      return `<span>Ready</span>`;
+    }
+
+    function micMarkup() {
+      if (phase === "listening") {
+        return `<span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>Your turn</span>`;
+      }
+      if (running) {
+        return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg><span>Pause</span>`;
+      }
+      if (phase === "ended") {
+        return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14l11-7-11-7Z" fill="currentColor"></path></svg><span>Start again</span>`;
+      }
+      return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg><span>Start</span>`;
+    }
+
+    function renderControls() {
+      el.zhToggle.setAttribute("aria-pressed", String(showChinese));
+      el.micButton.classList.toggle("live", phase === "listening");
+      el.micButton.innerHTML = micMarkup();
+      el.stateRow.innerHTML = stateMarkup();
+      el.sessionMeta.textContent = running ? (phase === "listening" ? "LISTEN" : "LIVE") : (phase === "ended" ? "DONE" : "READY");
+    }
+
+    function renderSettings() {
+      document.querySelectorAll(".sheet-tab").forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.panel === panel);
+      });
+      el.settingsBody.innerHTML = settingsPanels[panel].map(([label, value]) => `
+        <div class="setting"><span>${label}</span><span>${value}</span></div>
+      `).join("");
+    }
+
+    function render() {
+      renderTurns();
+      renderControls();
+      renderSettings();
+    }
+
+    function clearCycle() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    }
+
+    function schedule() {
+      clearCycle();
+      if (!running) return;
+      const current = script[shown - 1];
+      const delay = phase === "listening" ? 2500 : phase === "thinking" ? 760 : 2300;
+      timer = setTimeout(() => {
+        if (phase === "speaking") {
+          phase = current.who === "vox" ? "listening" : "thinking";
+        } else if (shown < script.length) {
+          shown += 1;
+          phase = script[shown - 1].who === "vox" ? "speaking" : "thinking";
+        } else {
+          running = false;
+          phase = "ended";
+        }
+        render();
+        schedule();
+      }, delay);
+    }
+
+    function start() {
+      if (phase === "ended") {
+        shown = 1;
+      }
+      running = true;
+      phase = script[shown - 1].who === "vox" ? "speaking" : "thinking";
+      sticky = true;
+      render();
+      schedule();
+    }
+
+    function pause() {
+      running = false;
+      clearCycle();
+      renderControls();
+    }
+
+    function restart() {
+      shown = 2;
+      running = false;
+      phase = "idle";
+      sticky = true;
+      clearCycle();
+      render();
+    }
+
+    function openSheet(nextPanel = panel) {
+      panel = nextPanel;
+      el.sheet.classList.add("open");
+      el.sheetBackdrop.classList.add("open");
+      renderSettings();
+    }
+
+    function closeSheet() {
+      el.sheet.classList.remove("open");
+      el.sheetBackdrop.classList.remove("open");
+    }
+
+    el.transcript.addEventListener("scroll", () => { sticky = nearBottom(); }, { passive: true });
+    el.zhToggle.addEventListener("click", () => {
+      showChinese = !showChinese;
+      render();
+    });
+    el.micButton.addEventListener("click", () => {
+      running ? pause() : start();
+    });
+    el.restartButton.addEventListener("click", restart);
+    el.moreButton.addEventListener("click", () => openSheet("course"));
+    el.levelButton.addEventListener("click", () => openSheet("memory"));
+    el.closeSheet.addEventListener("click", closeSheet);
+    el.sheetBackdrop.addEventListener("click", closeSheet);
+    document.querySelectorAll(".sheet-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        panel = tab.dataset.panel;
+        renderSettings();
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>
