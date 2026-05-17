@@ -1,41 +1,95 @@
 # Vox Truthfile
 
-Vox is a Web App first English tutor. iOS remains paused until the Web App login, conversation, drill, and memory flows are stable.
+Vox is a spoken English companion for Chinese-speaking learners. It should feel like a patient conversation partner who remembers how the learner speaks, notices when they stop understanding, and changes the conversation before the learner has to explain the problem.
 
-## Current Direction
+Vox is not a generic chatbot, a fixed lesson player, or a correction machine. The product promise is: the learner can keep talking, understand enough to stay in the conversation, and gradually need less Chinese support.
 
-Vox is now a multi-user app. Every user must log in before using the Web App, and user memory must be scoped to that logged-in account.
+> Updated: 2026-05-18
 
-The first release should focus on the Web App. iOS OAuth callback setup and App Store login polish are explicitly out of scope until the Web App path is stable.
+## Current Bet
 
-## Login Decision
+First prove one question: can Vox speak at a level this learner can actually follow right now?
 
-Use Google Sign-In as the first login path.
+The first prototype should not try to solve every long-term tutoring problem. It should make the learner feel three things in one live session:
 
-- Product entry: users sign in with Google before entering Vox. Anonymous sessions are not part of the first Web App release.
-- Auth provider: Supabase Auth handles Google OAuth and session management.
-- Account identity: use the authenticated Supabase user id as the durable internal user id. Google email is display and access-control metadata, not the database join key.
-- Data store: Supabase Postgres stores profile, preferences, conversation summaries, drill progress, and usage records.
-- Data isolation: every user-scoped table must include `user_id`; Supabase RLS policies must restrict reads and writes to the logged-in user.
-- Early access: add an application-side allowlist for approved emails or domains. Google login proves identity, but the allowlist decides whether the user can enter.
-- Web first: production OAuth redirect URI targets `https://vox.exp.game`. Local and preview redirect URIs can be added for development. iOS redirect URIs wait.
+- Vox starts conservatively instead of assuming the learner's level.
+- Vox notices whether the learner understood the last turn.
+- Vox changes the next turn's language mix, speed, and explanation style without restarting the session.
 
-## Why This Choice
+## Delivery Boundary
 
-Google Sign-In is the lowest-friction path for the current Web App stage. It avoids password storage, reduces account-recovery work, and gives stable identity quickly enough to build multi-user memory.
+Vox ships as a Web App first. A learner signs in with Google so Vox can keep that learner's memory separate from everyone else's, and early access stays invite-only before a live voice session starts.
 
-Supabase fits the current stage because it gives Auth, Postgres, session handling, and Row Level Security in one place. It is enough for early multi-user isolation without building a custom auth stack.
+Google-only is acceptable for the Web App MVP. If native iOS returns, add Sign in with Apple or an equivalent App Store-compliant login option before App Store distribution.
 
-## Known Tradeoffs
+Supabase is the first auth and data boundary: Supabase Auth handles Google OAuth, Supabase Postgres stores learner profiles and session summaries, and RLS must prevent one user from reading or writing another user's data.
 
-- Some users may not have or want a Google account. If that blocks real users, add email magic-link login later.
-- Google login alone does not make the app private. Without an allowlist, any Google user who reaches the app could create a session.
-- OAuth setup must include correct authorized redirect URIs for local, preview, and production domains.
-- Shared accounts are not supported. Memory, progress, and quota depend on one stable user per account.
+Google login proves identity, but it does not make Vox private by itself. The backend still needs an email or domain allowlist before the learner enters a live session.
 
-## Product Guardrails
+## Product Shape
 
-- Do not hard-code a single user name into product copy, prompt behavior, memory ownership, or storage paths.
-- Do not mix data across users, even in test flows.
-- Do not ship a login bypass in production.
-- Keep user-facing copy focused on what Vox does for the learner, not on implementation details.
+### Adaptive Conversation Lanes
+
+Vox should carry several conversation lanes and move between them during the same session.
+
+| Lane | What the learner hears | When Vox uses it |
+| --- | --- | --- |
+| Chinese support | Mostly Chinese, with short English phrases | The learner is new, blocked, or needs the meaning first |
+| Guided English | Simple English plus Chinese rescue lines | The learner can follow short turns but still needs support |
+| English-first coaching | English explanations, with Chinese only when needed | The learner can follow the topic but misses nuance |
+| Natural English | English conversation with light coaching | The learner can keep the conversation moving |
+
+The important behavior is not the labels. The important behavior is that Vox can move down when the learner is lost and move up when the learner is following easily.
+
+### Understandability Check
+
+Vox needs a gentle way to answer: "Can this learner understand this level of spoken English right now?"
+
+The check should feel like conversation, not an exam:
+
+1. Start with a familiar topic.
+2. Ask one short English question.
+3. Look for evidence that the learner understood the meaning, not just whether they answered with perfect grammar.
+4. If they understood, try one slightly harder turn.
+5. If they did not, repeat the idea with simpler English or Chinese support.
+
+The success signal is simple: the learner can keep responding without constantly asking Vox to repeat, translate, or slow down.
+
+### Learner Memory
+
+Vox should remember the learner's learning profile, not store raw private conversation as the source of truth.
+
+The first memory system should stay small and structured:
+
+- Current listening comfort: what length, speed, and vocabulary the learner can usually follow.
+- Chinese support preference: how much Chinese helps without making the session feel like translation.
+- Conversation topics: familiar topics that make speaking easier.
+- Recent trouble spots: phrases, sounds, grammar patterns, or question types that repeatedly block the learner.
+- Useful coaching style: whether the learner responds better to direct correction, recasts, examples, or quick drills.
+- Review queue: a short list of things Vox should naturally bring back later.
+
+After each session, Vox should update this profile with a short learning summary. The next session should begin from the profile instead of starting from zero.
+
+### Recommended Memory Direction
+
+Start with a structured learner profile plus session summaries. Do not make a large semantic memory store the first source of truth.
+
+Reason: the product needs stable tutoring behavior more than broad recall. A compact profile is easier to inspect, safer to change, and directly useful for choosing the next conversation lane.
+
+Semantic recall can come later for examples, favorite topics, or long-running personal context. It should support the learner profile, not replace it.
+
+## Prototype Acceptance
+
+The first usable demo passes when:
+
+- Vox begins with a conservative conversation lane.
+- Vox can detect "understood", "partly understood", and "lost" from the live exchange.
+- Vox changes the next turn's English difficulty and Chinese support based on that signal.
+- Vox saves a short learner profile after the session.
+- A later session starts with that saved profile and feels different from a brand-new user session.
+
+The product test is: at this level, can the learner follow Vox without constantly stopping the conversation?
+
+## Writing Rule
+
+Write Vox product docs in user-facing capability language. Avoid describing the feature as "a prompt", "a vector database", or "an evaluator" unless the document is specifically for implementation.

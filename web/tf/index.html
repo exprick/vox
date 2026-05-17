@@ -10,84 +10,133 @@
   <nav class="nav">
     <div class="brand">Vox <span class="tag">Truthfile</span></div>
     <div class="links">
-      <a class="active" href="/tf/">当前方向</a>
+      <a class="active" href="/tf/">Truthfile</a>
       <a href="/voice-course/">Voice Course</a>
+      <a href="/">Home</a>
     </div>
   </nav>
 
   <main class="container">
     <header class="tf-hero">
-      <div class="tf-kicker">Web App First</div>
-      <h1>Vox 先做 Web App：Google 登录后，进入一屏自然对话课。</h1>
-      <p>Vox 现在按多用户产品来做。每个用户先登录，再开始对话、练习和复盘；记忆、进度、用量都跟着自己的账号走。</p>
+      <div class="tf-kicker">当前对齐 · 听懂校准</div>
+      <h1>Vox 要像一个记得你的英语语伴，而不是一台固定课程机器。</h1>
+      <p>第一阶段先验证一件事：Vox 能不能在实时语音里判断你现在听不听得懂，并立刻换成更适合你的说法。</p>
     </header>
 
-    <section class="tf-status">
+    <section class="tf-status" aria-label="当前验证重点">
       <div class="tf-status-main">
-        <div class="tf-label">Current Decision</div>
-        <h2>Google 登录 + Supabase 记忆</h2>
-        <p>第一版只做 Web App，不做 iOS 登录闭环。Google 负责确认身份，Vox 自己用早期白名单决定谁能进入，Supabase 保存每个用户自己的学习记录。</p>
+        <div class="tf-label">Prototype Focus</div>
+        <h2>先打样“我能不能听懂”</h2>
+        <p>Vox 开场先保守一点，不急着全英文。它通过你是否接得住上一句话，判断下一句应该更简单、更慢、加中文支架，还是可以继续用英语解释英语。</p>
       </div>
       <div class="tf-status-side">
-        <strong>Web only</strong>
-        <span>iOS 暂停</span>
-        <em>先把网页端的登录、对话、练习、记忆跑顺，再评估 iOS。</em>
+        <strong>1 个核心问题</strong>
+        <span>当前水平能否跟上这段真实对话</span>
+        <em>验收标准不是考试分数，而是你不用频繁停下来问“什么意思”。</em>
       </div>
     </section>
 
     <section>
-      <h2>登录方案 <span class="desc">先解决能安全区分用户，再做更多登录方式。</span></h2>
+      <h2>交流档位 <span class="desc">产品上不是“几套 Prompt”，而是几种 Vox 可以随时切换的说话方式。</span></h2>
       <div class="tf-card-grid">
         <article class="tf-card">
           <div class="tf-card-index">1</div>
-          <h3>Google 登录</h3>
-          <p>用户用自己的 Google 账号进入 Vox。Vox 不保存密码，也不要求用户再记一套账号。</p>
+          <h3>中文支架</h3>
+          <p>先用中文帮你抓住意思，再放入短英文表达。适合刚开始、卡住、或者需要先理解场景的时候。</p>
         </article>
         <article class="tf-card">
           <div class="tf-card-index">2</div>
-          <h3>早期白名单</h3>
-          <p>Google 登录不等于任何人都能用。第一阶段只允许白名单里的邮箱或域名进入。</p>
+          <h3>引导式英语</h3>
+          <p>主要用简单英语推进，但保留中文救援。适合能接短句、但遇到长解释会掉线的时候。</p>
         </article>
         <article class="tf-card">
           <div class="tf-card-index">3</div>
-          <h3>用户记忆隔离</h3>
-          <p>每个用户的偏好、对话总结、练习进度和用量都绑定到自己的账号，不和其他人混在一起。</p>
+          <h3>英语解释英语</h3>
+          <p>用目标语言本身解释目标语言，只在必要时回到中文。适合已经能跟上主题、想减少翻译依赖的时候。</p>
         </article>
       </div>
     </section>
 
     <section>
-      <h2>为什么这样做 <span class="desc">当前目标是最快拿到可靠的多用户 Web App。</span></h2>
+      <h2>听懂校准 <span class="desc">它应该像聊天，不像测试。</span></h2>
+      <ol class="tf-steps">
+        <li>从你熟悉的话题开始，降低第一次开口的压力。</li>
+        <li>先问一个短英文问题，看你是否理解意思。</li>
+        <li>如果你答得上，就把下一轮稍微变难一点。</li>
+        <li>如果你停住、答偏、或只听懂一半，就换成更短的英语或加中文支架。</li>
+        <li>整场对话持续记录“什么难度你能接住”，而不是只给一个静态等级。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>长期记忆 <span class="desc">第一版推荐记“学习画像”，不要把大段原始聊天当记忆核心。</span></h2>
       <div class="tf-memory-list">
         <div>
-          <strong>摩擦最小</strong>
-          <span>Google 登录比自建密码系统更快，也少了找回密码、密码安全、验证码滥用这些早期负担。</span>
+          <strong>当前水平</strong>
+          <span>能听懂多长的句子、什么速度、什么词汇密度。</span>
         </div>
         <div>
-          <strong>边界清楚</strong>
-          <span>登录确认“你是谁”，白名单决定“你能不能进”。这两个问题分开，后面更容易扩展。</span>
+          <strong>支架偏好</strong>
+          <span>什么时候需要中文，什么时候应该坚持用英语解释。</span>
         </div>
         <div>
-          <strong>后续可加</strong>
-          <span>如果真实用户被 Google 卡住，再加邮箱 magic link；现在先不为了假设需求增加复杂度。</span>
+          <strong>常见卡点</strong>
+          <span>反复听不准的音、答不上来的问题类型、容易混的表达。</span>
+        </div>
+        <div>
+          <strong>有效教法</strong>
+          <span>你更适合直接纠错、换一种说法、给例句，还是立刻做一个小练习。</span>
+        </div>
+        <div>
+          <strong>复习线索</strong>
+          <span>下次对话要自然带回来的短语、场景和发音点。</span>
         </div>
       </div>
     </section>
 
     <section>
-      <h2>上线前检查 <span class="desc">避免登录能进、数据却串人的问题。</span></h2>
-      <ol class="tf-steps">
-        <li>生产域名、预览域名、本地开发地址都要加入 Google 授权回调。</li>
-        <li>所有用户数据都必须带用户身份；没有身份的数据不能进入正式记忆。</li>
-        <li>白名单在后端判断，不能只靠前端隐藏按钮。</li>
-        <li>生产环境不保留免登录入口；测试入口只能用于本地或受控预览。</li>
-      </ol>
+      <h2>交付边界 <span class="desc">先保证每个学习者有自己的记忆，再扩大到更多入口。</span></h2>
+      <div class="tf-memory-list">
+        <div>
+          <strong>先做 Web App</strong>
+          <span>学习者登录后直接开始语音对话课，不先绕进复杂课程选择。</span>
+        </div>
+        <div>
+          <strong>Google 登录</strong>
+          <span>第一版用 Google 账号区分学习者；Supabase 保存学习画像和会话总结，数据只回到自己的账号。</span>
+        </div>
+        <div>
+          <strong>早期白名单</strong>
+          <span>Google 登录只是确认身份，能不能进入由后端白名单决定。先开放给受控用户，观察体验是否真的变好。</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>第一版验收 <span class="desc">打样只看体验是否真的变聪明。</span></h2>
+      <div class="tf-card-grid">
+        <article class="tf-card">
+          <div class="tf-card-index">A</div>
+          <h3>同场调整</h3>
+          <p>你听不懂时，Vox 下一句自动降低难度；你跟得上时，Vox 逐步减少中文。</p>
+        </article>
+        <article class="tf-card">
+          <div class="tf-card-index">B</div>
+          <h3>下次记得</h3>
+          <p>结束后保存一份短学习画像；下一次开场不再像新用户一样重新摸索。</p>
+        </article>
+        <article class="tf-card">
+          <div class="tf-card-index">C</div>
+          <h3>用户能感到差异</h3>
+          <p>判断标准很朴素：这个难度下，你能不能不用频繁打断，也能持续跟 Vox 说下去。</p>
+        </article>
+      </div>
     </section>
   </main>
 
   <footer class="foot">
     <span>Vox Truthfile</span>
-    <span>Web App first, iOS later.</span>
+    <span>Focus: adaptive voice companion + learner memory</span>
   </footer>
 </body>
 </html>
