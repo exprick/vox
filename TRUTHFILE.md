@@ -6,6 +6,12 @@ Vox is not a generic chatbot, a fixed lesson player, or a correction machine. Th
 
 > Updated: 2026-05-18
 
+## Source Of Truth
+
+`TRUTHFILE.md` is the canonical product truth for Vox. `web/tf/index.html` is the reader-facing version of the same product direction.
+
+Both files should stay tracked in the public repository. Public cleanup should remove secrets, device IDs, logs, private harness state, generated memory, and recordings; it should not remove the Truthfile product description.
+
 ## Current Bet
 
 First prove one question: can Vox speak at a level this learner can actually follow right now?

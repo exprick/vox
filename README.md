@@ -12,6 +12,11 @@ It combines:
 
 This repository is a public-safe development snapshot. It intentionally does not include private runtime logs, local agent infrastructure files, personal memory, audio recordings, or device-specific IDs.
 
+## Truthfile
+
+The product source of truth lives in `TRUTHFILE.md`, with the reader-facing version at `web/tf/index.html`.
+Keep both in sync when changing Vox's product direction, user-facing capabilities, or delivery boundary.
+
 ## Requirements
 
 - Node.js 22+

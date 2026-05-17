@@ -4,8 +4,6 @@ artifacts/
 .codex/
 .harness/
 .sync-conflict
-TRUTHFILE.md
-web/tf/
 .env
 .env.local
 *.log
