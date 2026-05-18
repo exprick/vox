@@ -44,3 +44,5 @@ TF impact: not-needed — follow-up hardening for filename entropy, small ignore
 TF impact: not-needed — follow-up hardening for pending recording ownership, recorder shutdown order, and ignored voice-session request bodies does not change the product promise already documented as truthful recording-save status.
 
 TF impact: not-needed — root URL now redirects to the already documented Voice Course app so shared `https://vox.exp.game/` opens the current no-login prototype directly.
+
+TF impact: not-needed — restores the original Vox voice-course visual shell for the already documented no-login Realtime prototype without changing the published product promise.

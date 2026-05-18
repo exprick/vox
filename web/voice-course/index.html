@@ -141,7 +141,7 @@
     .secondary-btn {
       min-height: 42px;
       padding: 0 14px;
-      font-weight: 650;
+      font-weight: 600;
     }
 
     .ghost-btn {
@@ -464,9 +464,315 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Preserve the original Vox voice-course visual language while the
+       production plumbing uses the newer Realtime/recording state machine. */
+    .public-learner-shell {
+      --bg: #f3dfca;
+      --bg-deep: #d2a18f;
+      --ink: #27140f;
+      --muted: rgba(39, 20, 15, 0.62);
+      --line: rgba(39, 20, 15, 0.12);
+      --primary: #27140f;
+      --coral: #b64235;
+      --soft-blue: rgba(255, 246, 236, 0.36);
+      --soft-teal: rgba(255, 246, 236, 0.52);
+      --soft-red: rgba(180, 66, 53, 0.14);
+      --shadow: 0 34px 90px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(255, 255, 255, 0.16);
+      --serif: Georgia, "Times New Roman", "Songti SC", serif;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body.public-learner-shell {
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      overflow: hidden;
+      background:
+        radial-gradient(900px 620px at 50% -12%, #f9eadb 0%, rgba(249, 234, 219, 0) 64%),
+        radial-gradient(700px 520px at 55% 112%, rgba(180, 66, 53, 0.22) 0%, rgba(180, 66, 53, 0) 72%),
+        #1a1410;
+    }
+
+    .public-learner-shell .shell {
+      position: relative;
+      width: min(100%, 430px);
+      height: min(900px, calc(100vh - 44px));
+      min-height: 720px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 46px;
+      background:
+        radial-gradient(120% 78% at 50% 0%, #edc7aa 0%, rgba(237, 199, 170, 0) 62%),
+        radial-gradient(112% 68% at 50% 104%, rgba(180, 66, 53, 0.20) 0%, rgba(180, 66, 53, 0) 66%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+      box-shadow: var(--shadow);
+      isolation: isolate;
+    }
+
+    .public-learner-shell .shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(72% 44% at 22% 22%, rgba(255, 242, 226, 0.48), transparent 64%),
+        linear-gradient(90deg, rgba(255,255,255,0.08), transparent 42%, rgba(44,18,12,0.04));
+    }
+
+    .public-learner-shell .side,
+    .public-learner-shell .main {
+      position: relative;
+      z-index: 1;
+    }
+
+    .public-learner-shell .side {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      border: 0;
+      padding: max(30px, env(safe-area-inset-top)) 24px 8px;
+      background: transparent;
+    }
+
+    .public-learner-shell .brand {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .public-learner-shell .brand h1 {
+      font: italic 30px/1 var(--serif);
+      white-space: nowrap;
+    }
+
+    .public-learner-shell .badge {
+      min-height: 0;
+      border-radius: 999px;
+      padding: 9px 12px;
+      background: rgba(255, 246, 236, 0.36);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+    }
+
+    .public-learner-shell .badge.live {
+      background: rgba(180, 66, 53, 0.16);
+      color: rgba(180, 66, 53, 0.92);
+    }
+
+    .public-learner-shell .badge.error {
+      color: rgba(180, 66, 53, 0.94);
+    }
+
+    .public-learner-shell .profile,
+    .public-learner-shell .side-actions,
+    .public-learner-shell .recordings,
+    .public-learner-shell .topbar {
+      display: none;
+    }
+
+    .public-learner-shell .main {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 0 24px max(18px, env(safe-area-inset-bottom));
+    }
+
+    .public-learner-shell .transcript {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin: 6px -24px 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 44px 28px 18px;
+      background: transparent;
+      scrollbar-width: none;
+      mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
+    }
+
+    .public-learner-shell .transcript::-webkit-scrollbar { display: none; }
+
+    .public-learner-shell .turns {
+      min-height: 100%;
+      max-width: none;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 23px;
+    }
+
+    .public-learner-shell .turn,
+    .public-learner-shell .turn.user,
+    .public-learner-shell .turn.assistant,
+    .public-learner-shell .turn.system {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      display: grid;
+      gap: 7px;
+    }
+
+    .public-learner-shell .who {
+      font: italic 14px/1.1 var(--serif);
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .public-learner-shell .turn.user .who {
+      color: rgba(180, 66, 53, 0.64);
+    }
+
+    .public-learner-shell .turn.preview {
+      opacity: 0.9;
+    }
+
+    .public-learner-shell .text {
+      margin: 0;
+      font: 25px/1.17 var(--serif);
+      color: rgba(39, 20, 15, 0.58);
+      letter-spacing: 0;
+      text-wrap: pretty;
+    }
+
+    .public-learner-shell .turn.user .text {
+      font-style: italic;
+      color: rgba(180, 66, 53, 0.72);
+      font-size: 23px;
+    }
+
+    .public-learner-shell .turn.current .text {
+      color: var(--ink);
+      font-size: clamp(28px, 7vw, 33px);
+    }
+
+    .public-learner-shell .turn.user.current .text {
+      color: rgba(180, 66, 53, 0.92);
+      font-size: clamp(25px, 6.2vw, 30px);
+    }
+
+    .public-learner-shell .turn.system .text {
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 1.45;
+      color: rgba(39, 20, 15, 0.48);
+    }
+
+    .public-learner-shell .controls {
+      flex: 0 0 auto;
+      border: 0;
+      padding: 8px 0 0;
+      background: transparent;
+    }
+
+    .public-learner-shell .control-inner {
+      max-width: none;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .public-learner-shell .primary-btn {
+      min-width: 0;
+      min-height: 58px;
+      border-radius: 999px;
+      background: var(--ink);
+      color: #fff6ec;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      box-shadow: 0 12px 32px rgba(39, 20, 15, 0.18);
+    }
+
+    .public-learner-shell .primary-btn.live {
+      background: var(--coral);
+      animation: micPulse 1.6s ease-out infinite;
+    }
+
+    @keyframes micPulse {
+      0% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0.30); }
+      72% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 18px rgba(180, 66, 53, 0); }
+      100% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0); }
+    }
+
+    .public-learner-shell .meta {
+      justify-content: center;
+      min-height: 34px;
+      color: var(--muted);
+      font: italic 15px/1 var(--serif);
+    }
+
+    .public-learner-shell .meta small {
+      color: var(--muted);
+      font: inherit;
+    }
+
+    .public-learner-shell .login {
+      background: rgba(39, 20, 15, 0.18);
+    }
+
+    .public-learner-shell .login-card {
+      border-radius: 28px;
+      background: rgba(255, 246, 236, 0.88);
+      border: 0.5px solid rgba(255,255,255,0.48);
+      box-shadow: 0 24px 70px rgba(39, 20, 15, 0.24);
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+    }
+
+    @media (max-width: 520px) {
+      body.public-learner-shell {
+        padding: 0;
+        display: block;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .public-learner-shell .shell {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      .public-learner-shell .side {
+        padding-left: 22px;
+        padding-right: 22px;
+      }
+
+      .public-learner-shell .main {
+        padding-left: 22px;
+        padding-right: 22px;
+      }
+
+      .public-learner-shell .transcript {
+        margin-left: -22px;
+        margin-right: -22px;
+        padding-left: 26px;
+        padding-right: 26px;
+      }
+    }
+
+    @media (max-height: 760px) {
+      .public-learner-shell .shell { min-height: 0; }
+      .public-learner-shell .side { padding-top: 22px; }
+      .public-learner-shell .transcript { padding-top: 24px; }
+      .public-learner-shell .turns { gap: 18px; }
+      .public-learner-shell .turn.current .text { font-size: 27px; }
+      .public-learner-shell .text { font-size: 23px; }
+    }
   </style>
 </head>
-<body>
+<body class="public-learner-shell">
   <div class="shell" aria-label="Vox voice tutor">
     <aside class="side">
       <div class="brand">
@@ -551,6 +857,12 @@
       sessionLine: document.getElementById("sessionLine")
     };
 
+    const previewTurns = [
+      { role: "user", text: "I want to order coffee.", preview: true },
+      { role: "assistant", text: "Good. You can say: \"Can I get a small latte?\"", preview: true },
+      { role: "assistant", text: "Now try it once. Keep it short and natural.", preview: true }
+    ];
+
     const state = {
       config: null,
       supabase: null,
@@ -582,6 +894,7 @@
       recordings: []
     };
 
+    renderTurns();
     init().catch((error) => showFatal(error.message || String(error)));
 
     els.googleButton.addEventListener("click", signInWithGoogle);
@@ -692,7 +1005,6 @@
     async function startCall() {
       if (!state.user) return;
       clearError();
-      setPhase("connecting");
       state.sessionId = crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`;
       state.startedAt = new Date().toISOString();
       state.startedMs = Date.now();
@@ -701,6 +1013,7 @@
       state.recordingCapReached = false;
       state.assistantDraft = "";
       state.assistantDraftIndex = null;
+      setPhase("connecting");
       state.turns = [];
       addTurn("system", "Session started. Vox will begin conservatively.");
 
@@ -1142,12 +1455,31 @@
     }
 
     function renderTurns() {
-      els.turns.innerHTML = state.turns.map((turn) => `
-        <article class="turn ${escapeHtml(turn.role)}">
-          <div class="who">${turn.role === "user" ? "You" : turn.role === "assistant" ? "Vox" : "System"}</div>
-          <p class="text">${escapeHtml(turn.text)}</p>
-        </article>
-      `).join("");
+      const activePhase = state.phase === "connecting" ||
+        state.phase === "live" ||
+        state.phase === "ended" ||
+        state.phase === "error";
+      const showPreview = !state.turns.length && !state.sessionId && !activePhase;
+      const displayTurns = showPreview ? previewTurns : state.turns;
+      const lastIndex = displayTurns.length - 1;
+      els.turns.innerHTML = displayTurns.map((turn, index) => {
+        const role = escapeHtml(turn.role);
+        const preview = turn.preview ? " preview" : "";
+        const activeTurn = !turn.preview &&
+          turn.role !== "system" &&
+          (state.phase === "live" || state.phase === "connecting") &&
+          index === lastIndex;
+        const current = activeTurn ? " current" : "";
+        const ariaHidden = turn.preview ? ` aria-hidden="true"` : "";
+        const baseWho = turn.role === "user" ? "Learner" : turn.role === "assistant" ? "Vox" : "System";
+        const who = turn.preview ? `${baseWho} · Preview` : baseWho;
+        return `
+          <article class="turn ${role}${preview}${current}"${ariaHidden}>
+            <div class="who">${escapeHtml(who)}</div>
+            <p class="text">${escapeHtml(turn.text)}</p>
+          </article>
+        `;
+      }).join("");
       requestAnimationFrame(() => {
         const scroller = els.turns.closest(".transcript");
         scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
@@ -1156,6 +1488,9 @@
 
     function renderAuth() {
       const signedIn = Boolean(state.user);
+      const configLoaded = Boolean(state.config);
+      const publicLaunch = state.config?.auth?.required === false;
+      document.body.classList.toggle("public-learner-shell", !configLoaded || publicLaunch || !signedIn);
       els.loginPanel.hidden = signedIn;
       els.accountLabel.textContent = signedIn ? (state.user.email || state.user.name || "Signed in") : "Signed out";
       els.signOutButton.hidden = !signedIn || state.user.provider === "dev";
@@ -1174,7 +1509,7 @@
       els.connectionBadge.classList.toggle("error", state.phase === "error");
       const active = state.phase === "live" || state.phase === "connecting";
       els.callButton.classList.toggle("live", active);
-      els.callButton.innerHTML = active ? `<span class="pulse"></span><span>End and save</span>` : `<span>Start live voice</span>`;
+      els.callButton.innerHTML = active ? `<span class="pulse"></span><span>End and save</span>` : `<span>Start voice</span>`;
       els.callButton.disabled = !state.user || state.phase === "booting";
       if (!active && state.phase !== "ended") {
         els.transportState.textContent = "WebRTC idle";
