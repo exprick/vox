@@ -1043,13 +1043,7 @@
 
         state.dc = state.pc.createDataChannel("oai-events");
         state.dc.onopen = () => {
-          els.transportState.textContent = "Data channel open";
-          sendEvent({
-            type: "response.create",
-            response: {
-              instructions: "Start the session with one short friendly greeting. Use simple English first, then one brief Chinese rescue sentence."
-            }
-          });
+          els.transportState.textContent = "Listening";
         };
         state.dc.onmessage = (event) => handleRealtimeEvent(event.data);
         state.dc.onerror = () => {

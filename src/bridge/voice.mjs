@@ -51,14 +51,7 @@ USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. 
     audio: {
       input: {
         transcription,
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
-          create_response: true,
-          interrupt_response: true,
-        },
+        turn_detection: realtimeTurnDetectionConfig(),
       },
       output: {
         voice,
@@ -93,6 +86,18 @@ USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. 
   };
 }
 
+export function realtimeTurnDetectionConfig(env = process.env, opts = {}) {
+  const warn = typeof opts.warn === 'function' ? opts.warn : console.warn;
+  return {
+    type: 'server_vad',
+    threshold: readNumberEnv(env.VOX_VAD_THRESHOLD, 0.65, { min: 0, max: 1, name: 'VOX_VAD_THRESHOLD', warn }),
+    prefix_padding_ms: readIntegerEnv(env.VOX_VAD_PREFIX_PADDING_MS, 500, { min: 0, max: 2000, name: 'VOX_VAD_PREFIX_PADDING_MS', warn }),
+    silence_duration_ms: readIntegerEnv(env.VOX_VAD_SILENCE_DURATION_MS, 900, { min: 200, max: 3000, name: 'VOX_VAD_SILENCE_DURATION_MS', warn }),
+    create_response: readBooleanEnv(env.VOX_VAD_CREATE_RESPONSE, true, { name: 'VOX_VAD_CREATE_RESPONSE', warn }),
+    interrupt_response: readBooleanEnv(env.VOX_VAD_INTERRUPT_RESPONSE, false, { name: 'VOX_VAD_INTERRUPT_RESPONSE', warn }),
+  };
+}
+
 export async function transcribeWavBuffer(wavBytes, model = 'whisper-1') {
   const apiKey = await readOpenAIKey();
   const blob = new Blob([wavBytes], { type: 'audio/wav' });
@@ -112,4 +117,37 @@ export async function transcribeWavBuffer(wavBytes, model = 'whisper-1') {
 async function readOpenAIKey() {
   if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY.trim();
   throw new Error('OPENAI_API_KEY not found');
+}
+
+function readNumberEnv(value, fallback, { min, max, name, warn, integer = false } = {}) {
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (normalized == null || normalized === '') return fallback;
+  const parsed = Number(normalized);
+  const reject = (reason) => {
+    warnInvalidEnv({ name, value, reason, fallback, warn });
+    return fallback;
+  };
+  if (!Number.isFinite(parsed)) return reject('not a number');
+  if (integer && !Number.isInteger(parsed)) return reject('expected an integer');
+  if (min != null && parsed < min) return reject(`below ${min}`);
+  if (max != null && parsed > max) return reject(`above ${max}`);
+  return parsed;
+}
+
+function readIntegerEnv(value, fallback, bounds = {}) {
+  return readNumberEnv(value, fallback, { ...bounds, integer: true });
+}
+
+function readBooleanEnv(value, fallback, { name, warn } = {}) {
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (normalized == null || normalized === '') return fallback;
+  if (/^(1|true|yes|on)$/i.test(String(normalized))) return true;
+  if (/^(0|false|no|off)$/i.test(String(normalized))) return false;
+  warnInvalidEnv({ name, value, reason: 'expected a boolean', fallback, warn });
+  return fallback;
+}
+
+function warnInvalidEnv({ name, value, reason, fallback, warn }) {
+  if (!name || typeof warn !== 'function') return;
+  warn(`[vox] Ignoring ${name}=${JSON.stringify(String(value))}: ${reason}; using ${fallback}`);
 }

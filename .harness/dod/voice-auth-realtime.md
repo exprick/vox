@@ -54,3 +54,5 @@ TF impact: not-needed — push-review cleanup only delays the public visual shel
 TF impact: not-needed — final push-review cleanup limits transcript re-rendering to shell-mode changes and preserves the same public no-login voice UI.
 
 TF impact: not-needed — last review nits only remove redundant guards and clarify startup render order; user-visible Realtime behavior is unchanged.
+
+TF impact: not-needed — Realtime turn-taking now waits for learner speech and uses less aggressive VAD defaults, preserving the documented no-login voice and recording behavior while reducing self-interrupting fragments.

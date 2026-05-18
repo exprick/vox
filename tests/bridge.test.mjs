@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { authenticateRequest, authConfig, publicAuthConfig } from '../src/bridge/auth.mjs';
 import { listRecordings, saveRecording } from '../src/bridge/recordings.mjs';
+import { realtimeTurnDetectionConfig } from '../src/bridge/voice.mjs';
 
 test('auth can be explicitly disabled for local development', async (t) => {
   t.after(withEnv({
@@ -47,6 +48,68 @@ test('public auth config exposes only browser-safe fields', (t) => {
   assert.equal(Object.hasOwn(cfg, 'allowedEmails'), false);
   assert.equal(Object.hasOwn(cfg, 'allowedDomains'), false);
   assert.deepEqual(authConfig().allowedEmails, ['rick@exp.game']);
+});
+
+test('realtime turn detection defaults avoid self-interrupting short fragments', () => {
+  const cfg = realtimeTurnDetectionConfig({}, { warn: () => {} });
+  assert.equal(cfg.type, 'server_vad');
+  assert.equal(cfg.threshold, 0.65);
+  assert.equal(cfg.prefix_padding_ms, 500);
+  assert.equal(cfg.silence_duration_ms, 900);
+  assert.equal(cfg.create_response, true);
+  assert.equal(cfg.interrupt_response, false);
+});
+
+test('realtime turn detection env overrides are bounded and explicit', () => {
+  assert.deepEqual(realtimeTurnDetectionConfig({
+    VOX_VAD_THRESHOLD: '0.72',
+    VOX_VAD_PREFIX_PADDING_MS: '650',
+    VOX_VAD_SILENCE_DURATION_MS: '1200',
+    VOX_VAD_CREATE_RESPONSE: 'false',
+    VOX_VAD_INTERRUPT_RESPONSE: ' true ',
+  }, { warn: () => {} }), {
+    type: 'server_vad',
+    threshold: 0.72,
+    prefix_padding_ms: 650,
+    silence_duration_ms: 1200,
+    create_response: false,
+    interrupt_response: true,
+  });
+
+  const warnings = [];
+  const fallback = realtimeTurnDetectionConfig({
+    VOX_VAD_THRESHOLD: '1.5',
+    VOX_VAD_PREFIX_PADDING_MS: '500.9',
+    VOX_VAD_SILENCE_DURATION_MS: '50',
+    VOX_VAD_INTERRUPT_RESPONSE: 'maybe',
+  }, { warn: (message) => warnings.push(message) });
+  assert.equal(fallback.threshold, 0.65);
+  assert.equal(fallback.prefix_padding_ms, 500);
+  assert.equal(fallback.silence_duration_ms, 900);
+  assert.equal(fallback.interrupt_response, false);
+  assert.equal(warnings.length, 4);
+  assert.ok(warnings.some((message) => message.includes('VOX_VAD_THRESHOLD')));
+  assert.ok(warnings.some((message) => message.includes('VOX_VAD_PREFIX_PADDING_MS')));
+  assert.ok(warnings.some((message) => message.includes('VOX_VAD_SILENCE_DURATION_MS')));
+  assert.ok(warnings.some((message) => message.includes('VOX_VAD_INTERRUPT_RESPONSE')));
+
+  const blankFallback = realtimeTurnDetectionConfig({
+    VOX_VAD_THRESHOLD: '',
+    VOX_VAD_PREFIX_PADDING_MS: ' ',
+  }, { warn: (message) => warnings.push(message) });
+  assert.equal(blankFallback.threshold, 0.65);
+  assert.equal(blankFallback.prefix_padding_ms, 500);
+});
+
+test('web voice course waits for learner speech before starting a realtime response', async () => {
+  const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
+  const onOpenStart = html.indexOf('state.dc.onopen');
+  const nextHandlerStart = html.indexOf('state.dc.onmessage', onOpenStart);
+  assert.notEqual(onOpenStart, -1, 'data channel open handler should exist');
+  assert.notEqual(nextHandlerStart, -1, 'data channel message handler should follow open handler');
+  const onOpenHandler = html.slice(onOpenStart, nextHandlerStart);
+  assert.equal(onOpenHandler.includes('response.create'), false);
+  assert.equal(html.includes('Start the session with one short friendly greeting'), false);
 });
 
 test('recordings save audio and metadata without returning raw bytes in list output', async (t) => {
