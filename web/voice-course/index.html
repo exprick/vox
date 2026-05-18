@@ -349,6 +349,36 @@
       box-shadow: none;
     }
 
+    .settings-button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: #fff;
+      color: var(--muted);
+      cursor: default;
+      flex: 0 0 auto;
+    }
+
+    .settings-button span {
+      width: 3px;
+      height: 3px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .subtitle-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 0;
+    }
+
     .subtitle-status {
       min-width: 0;
       text-align: right;
@@ -774,7 +804,7 @@
       max-width: none;
       margin-bottom: 6px;
       min-height: 28px;
-      justify-content: center;
+      justify-content: space-between;
       gap: 10px;
       color: rgba(39, 20, 15, 0.50);
     }
@@ -795,6 +825,14 @@
 
     .public-learner-shell .subtitle-toggle[aria-pressed="false"] i {
       background: rgba(39, 20, 15, 0.28);
+    }
+
+    .public-learner-shell .settings-button {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      background: rgba(255, 246, 236, 0.28);
+      color: rgba(39, 20, 15, 0.42);
     }
 
     .public-learner-shell .subtitle-status {
@@ -936,10 +974,17 @@
 
       <footer class="controls">
         <div class="subtitle-strip" aria-label="Subtitle settings">
-          <button class="subtitle-toggle" type="button" id="subtitleToggle" aria-pressed="true">
-            <i aria-hidden="true"></i><span>中文字幕</span>
+          <button class="subtitle-toggle" type="button" id="subtitleToggle" aria-pressed="true" aria-label="中文字幕开" title="中文字幕开">
+            <i aria-hidden="true"></i><span>中</span>
           </button>
-          <small class="subtitle-status" id="subtitleStatus">Vox English shows Chinese subtitle</small>
+          <div class="subtitle-actions">
+            <small class="subtitle-status" id="subtitleStatus">Vox English shows Chinese subtitle</small>
+            <button class="settings-button" type="button" id="settingsButton" aria-label="设置" title="设置">
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
         <div class="control-inner">
           <button class="primary-btn" type="button" id="callButton" disabled>
@@ -1002,6 +1047,21 @@
     const SUBTITLE_RETRY_AFTER_MS = 15000;
     const SUBTITLE_MAX_TRIES = 2;
     const RECORDING_HEADER_MAX_CHARS = 6000;
+    const MIC_AUDIO_CONSTRAINTS = [
+      {
+        echoCancellation: { ideal: "all" },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        channelCount: { ideal: 1 }
+      },
+      {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
+      },
+      true
+    ];
 
     const state = {
       config: null,
@@ -1047,6 +1107,7 @@
       authExpiredHandling: false,
       stoppingCall: false,
       stopCallPromise: null,
+      micAudioSettings: null,
       recordings: []
     };
 
@@ -1201,13 +1262,8 @@
       setPhase("connecting");
 
       try {
-        state.stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
+        state.stream = await getVoxMicrophoneStream();
+        recordMicAudioSettings(state.stream);
         startRecorder(state.stream);
 
         state.pc = new RTCPeerConnection();
@@ -1271,6 +1327,46 @@
         setPhase("error");
         showError(error.message || String(error));
       }
+    }
+
+    async function getVoxMicrophoneStream() {
+      let lastError;
+      for (let index = 0; index < MIC_AUDIO_CONSTRAINTS.length; index += 1) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_AUDIO_CONSTRAINTS[index] });
+          if (index > 0) {
+            recordRealtimeEvent({
+              type: "vox.mic_constraints_fallback",
+              message: `microphone constraints fallback ${index}`
+            });
+          }
+          return stream;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error("microphone unavailable");
+    }
+
+    function recordMicAudioSettings(stream) {
+      const track = stream?.getAudioTracks?.()[0];
+      const settings = typeof track?.getSettings === "function" ? track.getSettings() : {};
+      state.micAudioSettings = {
+        echoCancellation: settings.echoCancellation,
+        noiseSuppression: settings.noiseSuppression,
+        autoGainControl: settings.autoGainControl,
+        channelCount: settings.channelCount,
+        sampleRate: settings.sampleRate,
+        sampleSize: settings.sampleSize
+      };
+      const enabled = Object.entries(state.micAudioSettings)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(", ");
+      recordRealtimeEvent({
+        type: "vox.mic_audio_processing",
+        message: enabled || "microphone audio processing settings unavailable"
+      });
     }
 
     function stopCall({ failed = false } = {}) {
@@ -2053,7 +2149,10 @@
 
     function renderSubtitleControls() {
       els.subtitleToggle.setAttribute("aria-pressed", String(state.showChineseSubtitles));
-      els.subtitleToggle.querySelector("span").textContent = state.showChineseSubtitles ? "中文字幕开" : "中文字幕关";
+      const subtitleLabel = state.showChineseSubtitles ? "中文字幕开" : "中文字幕关";
+      els.subtitleToggle.setAttribute("aria-label", subtitleLabel);
+      els.subtitleToggle.setAttribute("title", subtitleLabel);
+      els.subtitleToggle.querySelector("span").textContent = "中";
       const assistantTurns = state.turns.filter((turn) => turn.role === "assistant" && turn.text && !turn.draft);
       const ready = assistantTurns.filter((turn) => turn.zh).length;
       if (!state.showChineseSubtitles) {

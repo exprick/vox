@@ -12,6 +12,7 @@ import vm from 'node:vm';
 import { authenticateRequest, authConfig, publicAuthConfig } from '../src/bridge/auth.mjs';
 import { listRecordings, saveRecording } from '../src/bridge/recordings.mjs';
 import {
+  realtimeInputNoiseReductionConfig,
   normalizeSubtitleTargetLanguage,
   realtimeSessionConfig,
   realtimeTurnDetectionConfig,
@@ -71,6 +72,7 @@ test('realtime session config follows OpenAI voice-agent defaults', () => {
   assert.deepEqual(session.output_modalities, ['audio']);
   assert.deepEqual(session.reasoning, { effort: 'low' });
   assert.deepEqual(session.audio.input.format, { type: 'audio/pcm', rate: 24000 });
+  assert.deepEqual(session.audio.input.noise_reduction, { type: 'far_field' });
   assert.deepEqual(session.audio.output.format, { type: 'audio/pcm', rate: 24000 });
   assert.equal(session.audio.input.transcription.model, 'gpt-realtime-whisper');
   assert.deepEqual(session.audio.input.turn_detection, {
@@ -92,6 +94,7 @@ test('realtime session config keeps explicit deployment overrides bounded', () =
     VOX_REALTIME_REASONING_EFFORT: 'medium',
     VOX_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
     VOX_TRANSCRIPTION_LANGUAGE: 'en',
+    VOX_INPUT_NOISE_REDUCTION: 'near_field',
     VOX_VAD_EAGERNESS: 'high',
   });
 
@@ -100,6 +103,7 @@ test('realtime session config keeps explicit deployment overrides bounded', () =
   assert.equal(session.reasoning.effort, 'medium');
   assert.equal(session.audio.input.transcription.model, 'gpt-4o-mini-transcribe');
   assert.equal(session.audio.input.transcription.language, 'en');
+  assert.deepEqual(session.audio.input.noise_reduction, { type: 'near_field' });
   assert.equal(session.audio.input.turn_detection.eagerness, 'high');
   assert.deepEqual(warnings, []);
 
@@ -138,6 +142,23 @@ test('realtime turn detection defaults let language learners pause', () => {
 
   const compatibilityCfg = realtimeTurnDetectionConfig({}, { warn: () => {} });
   assert.equal(compatibilityCfg.create_response, true);
+});
+
+test('realtime input noise reduction defaults to speakerphone-safe far-field filtering', () => {
+  assert.deepEqual(realtimeInputNoiseReductionConfig({}, { warn: () => {} }), { type: 'far_field' });
+  assert.deepEqual(realtimeInputNoiseReductionConfig({
+    VOX_INPUT_NOISE_REDUCTION: 'near_field',
+  }, { warn: () => {} }), { type: 'near_field' });
+  assert.equal(realtimeInputNoiseReductionConfig({
+    VOX_INPUT_NOISE_REDUCTION: 'off',
+  }, { warn: () => {} }), null);
+
+  const warnings = [];
+  assert.deepEqual(realtimeInputNoiseReductionConfig({
+    VOX_INPUT_NOISE_REDUCTION: 'studio',
+  }, { warn: (message) => warnings.push(message) }), { type: 'far_field' });
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0].includes('VOX_INPUT_NOISE_REDUCTION'));
 });
 
 test('realtime turn detection env overrides are bounded and explicit', () => {
@@ -214,6 +235,21 @@ test('web voice course waits for learner speech before starting a realtime respo
   assert.equal(html.includes('Start the session with one short friendly greeting'), false);
 });
 
+test('web voice course requests and records browser audio processing for speaker echo control', async () => {
+  const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
+  assert.match(html, /const MIC_AUDIO_CONSTRAINTS = \[/);
+  assert.match(html, /echoCancellation:\s*\{\s*ideal:\s*"all"\s*\}/);
+  assert.match(html, /noiseSuppression:\s*\{\s*ideal:\s*true\s*\}/);
+  assert.match(html, /autoGainControl:\s*\{\s*ideal:\s*true\s*\}/);
+  assert.match(html, /async function getVoxMicrophoneStream\(\)/);
+  assert.match(html, /navigator\.mediaDevices\.getUserMedia\(\{ audio: MIC_AUDIO_CONSTRAINTS\[index\] \}\)/);
+  assert.match(html, /function recordMicAudioSettings\(stream\)/);
+  assert.match(html, /track\.getSettings\(\)/);
+  assert.match(html, /vox\.mic_audio_processing/);
+  assert.doesNotMatch(html, /deviceId/);
+  assert.doesNotMatch(html, /groupId/);
+});
+
 test('web root redirects to the canonical voice app URL without client-side redirect', async () => {
   const serverSource = await fs.readFile(new URL('../src/bridge/server.mjs', import.meta.url), 'utf8');
   assert.match(serverSource, /if \(pathname === '\/'\)/);
@@ -229,6 +265,11 @@ test('static directory routes redirect to canonical slash URLs', async (t) => {
   const proc = startTestBridge(port);
   t.after(() => proc.kill('SIGTERM'));
   await waitForHealth(`http://127.0.0.1:${port}/health`);
+
+  const configResp = await fetch(`http://127.0.0.1:${port}/api/config`);
+  assert.equal(configResp.status, 200);
+  const configPayload = await configResp.json();
+  assert.deepEqual(configPayload.realtime.noise_reduction, { type: 'far_field' });
 
   const rootResp = await fetch(`http://127.0.0.1:${port}/?topic=a%20b`, { redirect: 'manual' });
   assert.equal(rootResp.status, 307);

@@ -33,7 +33,7 @@ OPENAI_API_KEY=... VOX_AUTH_REQUIRED=0 node src/bridge/server.mjs
 
 The bridge listens on `PORT=3203` by default and serves `web/` plus the API routes on the same origin.
 
-Realtime sessions follow the current OpenAI voice-agent recommendations by default: WebRTC client secrets, `gpt-realtime-2`, `reasoning.effort=low`, `voice=marin`, `gpt-realtime-whisper` input transcription, and `semantic_vad` with low eagerness so learners can pause. Override with `VOX_REALTIME_MODEL`, `VOX_REALTIME_REASONING_EFFORT`, `VOX_REALTIME_VOICE`, `VOX_TRANSCRIPTION_MODEL`, `VOX_VAD_TYPE`, and `VOX_VAD_EAGERNESS` only when a deployment has measured evidence to tune them.
+Realtime sessions follow the current OpenAI voice-agent recommendations by default: WebRTC client secrets, `gpt-realtime-2`, `reasoning.effort=low`, `voice=marin`, `gpt-realtime-whisper` input transcription, `far_field` input noise reduction for phone/laptop speaker use, and `semantic_vad` with low eagerness so learners can pause. Override with `VOX_REALTIME_MODEL`, `VOX_REALTIME_REASONING_EFFORT`, `VOX_REALTIME_VOICE`, `VOX_TRANSCRIPTION_MODEL`, `VOX_INPUT_NOISE_REDUCTION`, `VOX_VAD_TYPE`, and `VOX_VAD_EAGERNESS` only when a deployment has measured evidence to tune them.
 
 Production login requires:
 

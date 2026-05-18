@@ -7,9 +7,12 @@ const DEFAULT_REALTIME_MODEL = 'gpt-realtime-2';
 const DEFAULT_REALTIME_VOICE = 'marin';
 const DEFAULT_REALTIME_REASONING_EFFORT = 'low';
 const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-realtime-whisper';
+const DEFAULT_INPUT_NOISE_REDUCTION = 'far_field';
 const REALTIME_REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
 const TURN_DETECTION_TYPES = new Set(['semantic_vad', 'server_vad']);
 const SEMANTIC_VAD_EAGERNESS = new Set(['low', 'medium', 'high', 'auto']);
+const INPUT_NOISE_REDUCTION_TYPES = new Set(['near_field', 'far_field']);
+const INPUT_NOISE_REDUCTION_DISABLED = new Set(['off', 'false', '0', 'none', 'null', 'disabled']);
 const SUBTITLE_TRANSLATION_TIMEOUT_MS = Number(process.env.VOX_SUBTITLE_TRANSLATION_TIMEOUT_MS || 15000);
 
 const VOX_INSTRUCTIONS = `# Role and Objective
@@ -140,6 +143,7 @@ export function realtimeSessionConfig(opts = {}, env = process.env) {
     audio: {
       input: {
         format: { type: 'audio/pcm', rate: 24000 },
+        noise_reduction: realtimeInputNoiseReductionConfig(env, { warn }),
         transcription,
         turn_detection: realtimeTurnDetectionConfig(env, {
           defaultCreateResponse: opts.clientResponseCreate !== true,
@@ -156,6 +160,25 @@ export function realtimeSessionConfig(opts = {}, env = process.env) {
     session.reasoning = { effort: reasoningEffort };
   }
   return { session, model, voice };
+}
+
+export function realtimeInputNoiseReductionConfig(env = process.env, opts = {}) {
+  const warn = typeof opts.warn === 'function' ? opts.warn : console.warn;
+  const raw = typeof env.VOX_INPUT_NOISE_REDUCTION === 'string'
+    ? env.VOX_INPUT_NOISE_REDUCTION.trim()
+    : env.VOX_INPUT_NOISE_REDUCTION;
+  if (raw == null || raw === '') return { type: DEFAULT_INPUT_NOISE_REDUCTION };
+  const normalized = String(raw).toLowerCase();
+  if (INPUT_NOISE_REDUCTION_DISABLED.has(normalized)) return null;
+  if (INPUT_NOISE_REDUCTION_TYPES.has(normalized)) return { type: normalized };
+  warnInvalidEnv({
+    name: 'VOX_INPUT_NOISE_REDUCTION',
+    value: raw,
+    reason: `expected one of ${[...INPUT_NOISE_REDUCTION_TYPES].join(', ')} or off`,
+    fallback: DEFAULT_INPUT_NOISE_REDUCTION,
+    warn,
+  });
+  return { type: DEFAULT_INPUT_NOISE_REDUCTION };
 }
 
 export function realtimeTurnDetectionConfig(env = process.env, opts = {}) {

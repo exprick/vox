@@ -484,6 +484,7 @@ function publicRealtimeConfig() {
     output_modalities: session.output_modalities,
     reasoning_effort: session.reasoning?.effort,
     transcription_model: session.audio.input.transcription?.model,
+    noise_reduction: session.audio.input.noise_reduction,
     turn_detection: session.audio.input.turn_detection,
   };
 }

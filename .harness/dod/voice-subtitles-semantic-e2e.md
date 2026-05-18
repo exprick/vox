@@ -58,3 +58,5 @@ Restore Vox Web App bilingual subtitle support and make the unattended voice E2E
 - `[subjective: iPhone physical audio]` This still does not replace a physical iPhone E2E for AVAudioSession, AirPods, lock screen, or room echo.
 
 TF impact: not-needed -- restores an existing subtitle control, aligns Realtime session defaults with official OpenAI voice-agent guidance, tightens echo filtering, client/server translation failure/timeout/retry/rate-limit/cache/backfill behavior, recording-header bounds, audio E2E cleanup safety, review-blocker follow-ups, and test coverage for the already documented Realtime voice behavior.
+
+TF impact: not-needed -- speakerphone echo filtering and compact subtitle/settings controls are reliability and interaction refinements within the already documented Realtime voice course behavior.
