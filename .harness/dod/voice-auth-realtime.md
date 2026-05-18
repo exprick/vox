@@ -42,3 +42,5 @@ curl -i -X POST http://127.0.0.1:3203/voice/session -H 'content-type: applicatio
 TF impact: not-needed — follow-up hardening for filename entropy, small ignored request bodies, and auth-expiry stop-state behavior stays within the existing recording-save truth already added to TRUTHFILE.md and web/tf/index.html.
 
 TF impact: not-needed — follow-up hardening for pending recording ownership, recorder shutdown order, and ignored voice-session request bodies does not change the product promise already documented as truthful recording-save status.
+
+TF impact: not-needed — root URL now redirects to the already documented Voice Course app so shared `https://vox.exp.game/` opens the current no-login prototype directly.
