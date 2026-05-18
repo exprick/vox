@@ -62,6 +62,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private var inputCommitDuringAssistantOutput: Bool = false
     private var inputCommitEchoText: String = ""
     private var assistantOutputActive: Bool = false
+    private var assistantEchoText: String = ""
     private var serverCreatesResponses: Bool = false
 
     /// Bumped on disconnect / new connect attempt. Lets a connect() resumed
@@ -314,6 +315,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         inputCommitEchoText = ""
         assistantBuffer = ""
         assistantOutputActive = false
+        assistantEchoText = ""
         lastAssistantText = ""
         serverCreatesResponses = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -334,25 +336,30 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
                 inputCommitEchoText = ""
             }
             assistantBuffer = ""
+            assistantEchoText = ""
             lastAssistantText = ""
             startResponseWatchdog()
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 assistantBuffer += delta
+                assistantEchoText = assistantBuffer
                 lastAssistantText = assistantBuffer
             }
         case "response.audio_transcript.done", "response.output_audio_transcript.done":
             // Final assistant text — push to bridge so get_app_state can see it.
+            assistantEchoText = assistantBuffer
+            rememberAssistantEchoText()
             postTranscriptToBridge(role: "assistant", text: assistantBuffer)
         case "response.audio.done", "response.output_audio.done", "response.done":
             assistantOutputActive = false
+            rememberAssistantEchoText()
             if type == "response.done" {
                 completeResponse()
             }
             isAssistantSpeaking = false
         case "input_audio_buffer.committed":
             inputCommitDuringAssistantOutput = assistantOutputActive
-            inputCommitEchoText = inputCommitDuringAssistantOutput ? (assistantBuffer.isEmpty ? lastAssistantText : assistantBuffer) : ""
+            inputCommitEchoText = inputCommitDuringAssistantOutput ? currentAssistantEchoText() : ""
             scheduleInputCommitFallback()
         case "conversation.item.input_audio_transcription.completed":
             let transcript = (json["transcript"] as? String) ?? ""
@@ -539,6 +546,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             guard self.responseActive, self.responseWatchdogGeneration == generation else { return }
             self.responseActive = false
             self.assistantOutputActive = false
+            self.rememberAssistantEchoText()
             self.log("response watchdog: response.done timeout")
             if self.pendingResponseCreate {
                 self.requestResponseCreate()
@@ -581,6 +589,8 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         if !assistantBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             postTranscriptToBridge(role: "assistant", text: assistantBuffer)
             lastAssistantText = assistantBuffer
+            assistantEchoText = assistantBuffer
+            rememberAssistantEchoText()
         }
         assistantBuffer = ""
         isAssistantSpeaking = false
@@ -589,9 +599,8 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private func shouldIgnoreInputTranscript(_ transcript: String) -> Bool {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return true }
-        let assistantText = inputCommitEchoText.isEmpty ? (assistantBuffer.isEmpty ? lastAssistantText : assistantBuffer) : inputCommitEchoText
-        if (assistantOutputActive || inputCommitDuringAssistantOutput) &&
-            isLikelyAssistantEcho(text, assistantText) { return true }
+        let echoWindowActive = assistantOutputActive || inputCommitDuringAssistantOutput
+        if echoWindowActive && isLikelyAssistantEcho(text, currentAssistantEchoText()) { return true }
         return false
     }
 
@@ -599,9 +608,33 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         let input = normalizeSpeechText(inputValue)
         let assistant = normalizeSpeechText(assistantValue)
         if input.isEmpty || assistant.isEmpty { return false }
-        let minLength = containsCompactSpeechScript(input) ? 5 : 12
+        let minLength = containsCompactSpeechScript(input) ? 5 : 8
         if input.count < minLength { return false }
-        return assistant == input || assistant.hasPrefix(input)
+        let assistantLength = containsCompactSpeechScript(assistant) ? 8 : 24
+        return assistant == input ||
+            assistant.hasPrefix(input) ||
+            (assistant.count >= assistantLength &&
+                input.hasPrefix(assistant) &&
+                isShortSpeechArtifact(String(input.dropFirst(assistant.count))))
+    }
+
+    private func isShortSpeechArtifact(_ value: String) -> Bool {
+        let artifact = normalizeSpeechText(value)
+        if artifact.isEmpty { return true }
+        return artifact.count <= 8 && artifact.split(separator: " ").count <= 2
+    }
+
+    private func currentAssistantEchoText() -> String {
+        if !inputCommitEchoText.isEmpty { return inputCommitEchoText }
+        if !assistantBuffer.isEmpty { return assistantBuffer }
+        if !assistantEchoText.isEmpty { return assistantEchoText }
+        return lastAssistantText
+    }
+
+    private func rememberAssistantEchoText() {
+        let text = currentAssistantEchoText().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        assistantEchoText = text
     }
 
     private func containsCompactSpeechScript(_ value: String) -> Bool {

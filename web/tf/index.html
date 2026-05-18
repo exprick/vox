@@ -6,164 +6,659 @@
   <title>Vox Truthfile</title>
   <link rel="stylesheet" href="/assets/style.css">
 </head>
-<body class="tf-page">
-  <nav class="nav">
-    <div class="brand">Vox <span class="tag">Truthfile</span></div>
-    <div class="links">
-      <a class="active" href="/tf/">Truthfile</a>
-      <a href="/voice-course/">Voice Course</a>
-      <a href="/">Home</a>
-    </div>
-  </nav>
-
-  <main class="container">
-    <header class="tf-hero">
-      <div class="tf-kicker">当前对齐 · 听懂校准</div>
-      <h1>Vox 要像一个记得你的英语语伴，而不是一台固定课程机器。</h1>
-      <p>第一阶段先验证一件事：Vox 能不能在实时语音里判断你现在听不听得懂，并立刻换成更适合你的说法。</p>
-    </header>
-
-    <section class="tf-status" aria-label="当前验证重点">
-      <div class="tf-status-main">
-        <div class="tf-label">Prototype Focus</div>
-        <h2>先打样“我能不能听懂”</h2>
-        <p>Vox 开场先保守一点，不急着全英文。它通过你是否接得住上一句话，判断下一句应该更简单、更慢、加中文支架，还是可以继续用英语解释英语。</p>
+<body class="tf-page tf-flow-page">
+  <div class="tf-workbench">
+    <aside class="tf-rail" aria-label="Vox workflows">
+      <div class="tf-rail-brand">
+        <strong>Vox</strong>
+        <span>Truthfile</span>
       </div>
-      <div class="tf-status-side">
-        <strong>1 个核心问题</strong>
-        <span>当前水平能否跟上这段真实对话</span>
-        <em>验收标准不是考试分数，而是你不用频繁停下来问“什么意思”。</em>
+      <nav class="tf-flow-nav">
+        <a href="#flow-access">入口与登录</a>
+        <a href="#flow-voice">实时语音</a>
+        <a href="#flow-adapt">听懂校准</a>
+        <a href="#flow-drill">练习生成</a>
+        <a href="#flow-memory">记忆与 Prompt</a>
+        <a href="#flow-recording">录音与字幕</a>
+        <a href="#flow-governance">Truthfile</a>
+      </nav>
+      <div class="tf-rail-footer">
+        <span>Runtime map</span>
+        <strong id="liveStatus">live config loading</strong>
       </div>
-    </section>
+    </aside>
 
-    <section>
-      <h2>唯一真相 <span class="desc">公开清理只能清敏感运行痕迹，不能清掉产品方向本身。</span></h2>
-      <div class="tf-memory-list">
-        <div>
-          <strong>Markdown 真相文件</strong>
-          <span><code>TRUTHFILE.md</code> 是 Vox 的产品方向源头，记录当前要做什么、为什么这么做、哪些还不做。</span>
+    <main class="tf-flow-main">
+      <header class="tf-flow-hero">
+        <div class="tf-kicker">当前对齐 · Workflow Truthfile</div>
+        <h1>把 Vox 看成一条会自我调节的英语练习流水线。</h1>
+        <p>每个流程都拆成模块：学习者从入口进入，Vox 建立实时语音会话，判断是否听懂，选择下一句的语言档位，并把练习、记忆和录音保存接回下次会话。</p>
+        <div class="tf-live-strip" aria-label="当前线上配置">
+          <button type="button" class="tf-chip" data-node="auth-gate"><span>登录</span><strong id="liveAuth">读取中</strong></button>
+          <button type="button" class="tf-chip" data-node="voice-model"><span>语音模型</span><strong id="liveModel">读取中</strong></button>
+          <button type="button" class="tf-chip" data-node="turn-detector"><span>Turn detection</span><strong id="liveVad">读取中</strong></button>
+          <button type="button" class="tf-chip" data-node="prompt-core"><span>Prompt</span><strong>共享基础 Prompt</strong></button>
         </div>
-        <div>
-          <strong>网页对齐面</strong>
-          <span><code>web/tf/index.html</code> 是同一份方向的可读网页版本，方便直接打开检查。</span>
+      </header>
+
+      <section class="tf-workflow" id="flow-access">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">01</span>
+          <div>
+            <h2>入口与登录</h2>
+            <p>当前公网原型先验证语音链路；目标产品仍是 Google 登录、早期白名单和按学习者隔离的数据。</p>
+          </div>
         </div>
-        <div>
-          <strong>公开仓库规则</strong>
-          <span>密钥、设备号、日志、录音、私有 harness 状态和生成记忆不能公开；Truthfile 的产品描述必须保留。</span>
+        <div class="tf-flow-chain">
+          <button type="button" class="tf-node is-active" data-node="entry-page">
+            <span class="tf-node-type">Entry</span>
+            <strong>打开 Web App</strong>
+            <em>/voice-course/</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="config-load">
+            <span class="tf-node-type">Config</span>
+            <strong>读取公开配置</strong>
+            <em>/api/config</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="auth-gate">
+            <span class="tf-node-type">Gate</span>
+            <strong>登录与白名单</strong>
+            <em id="authNodeHint">当前无登录上线</em>
+          </button>
         </div>
+        <details class="tf-loop" open>
+          <summary>目标闭环</summary>
+          <p>Google 登录只证明身份；真正的隐私边界来自后端白名单和 Supabase RLS。当前无登录模式只用于验证实时语音、录音保存和公网交付管道。</p>
+        </details>
+      </section>
+
+      <section class="tf-workflow" id="flow-voice">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">02</span>
+          <div>
+            <h2>实时语音</h2>
+            <p>浏览器不直接拿长期 API Key；bridge 只发短期 Realtime session，再由前端建立 WebRTC 通话。</p>
+          </div>
+        </div>
+        <div class="tf-flow-chain tf-flow-chain-wide">
+          <button type="button" class="tf-node" data-node="session-mint">
+            <span class="tf-node-type">Mint</span>
+            <strong>创建短期会话</strong>
+            <em>POST /voice/session</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="voice-model">
+            <span class="tf-node-type">Model</span>
+            <strong>Realtime voice</strong>
+            <em id="modelNodeHint">model loading</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="webrtc-call">
+            <span class="tf-node-type">Call</span>
+            <strong>浏览器语音通话</strong>
+            <em>/v1/realtime/calls</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="turn-detector">
+            <span class="tf-node-type">VAD</span>
+            <strong>等学习者说完</strong>
+            <em id="vadNodeHint">semantic_vad · low</em>
+          </button>
+        </div>
+        <details class="tf-loop" open>
+          <summary>会话循环</summary>
+          <p>学习者说一句，Vox 等到语义上该轮结束，再生成 1-2 句短回复。当前配置倾向于少打断，让 A2-B2 学习者有停顿空间。</p>
+        </details>
+      </section>
+
+      <section class="tf-workflow" id="flow-adapt">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">03</span>
+          <div>
+            <h2>听懂校准</h2>
+            <p>Vox 的核心不是固定课程，而是在同一场对话里判断“听懂了、半懂，还是丢了”。</p>
+          </div>
+        </div>
+        <div class="tf-loop-canvas">
+          <button type="button" class="tf-node" data-node="conservative-start">
+            <span class="tf-node-type">Start</span>
+            <strong>保守开场</strong>
+            <em>熟悉话题 + 短句</em>
+          </button>
+          <button type="button" class="tf-node" data-node="understanding-signal">
+            <span class="tf-node-type">Signal</span>
+            <strong>理解信号</strong>
+            <em>答得上 / 答偏 / 停住</em>
+          </button>
+          <button type="button" class="tf-node" data-node="lane-switch">
+            <span class="tf-node-type">Switch</span>
+            <strong>切换交流档位</strong>
+            <em>中文支架 ↔ 英语优先</em>
+          </button>
+          <button type="button" class="tf-node" data-node="next-turn">
+            <span class="tf-node-type">Next</span>
+            <strong>改写下一句</strong>
+            <em>更短 / 更慢 / 更英文</em>
+          </button>
+          <div class="tf-loop-line" aria-hidden="true"></div>
+        </div>
+        <details class="tf-loop" open>
+          <summary>交流档位</summary>
+          <div class="tf-lanes">
+            <span>中文支架</span>
+            <span>引导式英语</span>
+            <span>英语解释英语</span>
+            <span>自然英语</span>
+          </div>
+        </details>
+      </section>
+
+      <section class="tf-workflow" id="flow-drill">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">04</span>
+          <div>
+            <h2>练习生成</h2>
+            <p>对话里发现卡点后，Vox 可以把练习送到 Drill Tab，不把用户拖进复杂课程选择。</p>
+          </div>
+        </div>
+        <div class="tf-flow-chain">
+          <button type="button" class="tf-node" data-node="generate-drill">
+            <span class="tf-node-type">Tool</span>
+            <strong>生成填空题</strong>
+            <em>generate_drill</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="artifact-tab">
+            <span class="tf-node-type">Artifact</span>
+            <strong>发布到 Tab 2</strong>
+            <em>/artifact/latest/</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="drill-state">
+            <span class="tf-node-type">State</span>
+            <strong>练习状态回流</strong>
+            <em>answered / correct / wrong</em>
+          </button>
+        </div>
+        <details class="tf-loop" open>
+          <summary>练习来源</summary>
+          <p>Vox 可以直接给题目，也可以只给主题，让 starter pack 生成餐厅、旅行、酒店、日常、咖啡等场景练习。</p>
+        </details>
+      </section>
+
+      <section class="tf-workflow" id="flow-memory">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">05</span>
+          <div>
+            <h2>记忆与 Prompt</h2>
+            <p>第一版推荐记结构化学习画像，而不是把大段原始聊天当作记忆核心。</p>
+          </div>
+        </div>
+        <div class="tf-flow-chain tf-flow-chain-wide">
+          <button type="button" class="tf-node" data-node="prompt-core">
+            <span class="tf-node-type">Prompt</span>
+            <strong>当前 Vox 人设</strong>
+            <em>data/system_prompt.txt</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="tool-hint">
+            <span class="tf-node-type">Tools</span>
+            <strong>工具提示追加</strong>
+            <em>Realtime session tools</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="learner-profile">
+            <span class="tf-node-type">Memory</span>
+            <strong>学习画像</strong>
+            <em>目标状态</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="prompt-update">
+            <span class="tf-node-type">Control</span>
+            <strong>更新说话策略</strong>
+            <em>update_system_prompt</em>
+          </button>
+        </div>
+        <details class="tf-loop" open>
+          <summary>画像字段</summary>
+          <div class="tf-lanes">
+            <span>听力舒适区</span>
+            <span>中文支架偏好</span>
+            <span>熟悉话题</span>
+            <span>近期卡点</span>
+            <span>有效教法</span>
+            <span>复习队列</span>
+          </div>
+        </details>
+      </section>
+
+      <section class="tf-workflow" id="flow-recording">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">06</span>
+          <div>
+            <h2>录音与字幕</h2>
+            <p>只有后端真正收下录音后，Vox 才能说保存完成；中文字幕是辅助理解，不替代英语练习。</p>
+          </div>
+        </div>
+        <div class="tf-flow-chain">
+          <button type="button" class="tf-node" data-node="recording-save">
+            <span class="tf-node-type">Save</span>
+            <strong>保存录音</strong>
+            <em>POST /api/recordings</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="subtitle-translate">
+            <span class="tf-node-type">Subtitle</span>
+            <strong>英文字幕转中文</strong>
+            <em>POST /api/translate</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="recording-list">
+            <span class="tf-node-type">History</span>
+            <strong>按用户读取历史</strong>
+            <em>GET /api/recordings</em>
+          </button>
+        </div>
+        <details class="tf-loop" open>
+          <summary>保存边界</summary>
+          <p>录音、transcript、字幕和事件分开保存；扩大使用前必须恢复登录和用户隔离。</p>
+        </details>
+      </section>
+
+      <section class="tf-workflow" id="flow-governance">
+        <div class="tf-workflow-head">
+          <span class="tf-flow-index">07</span>
+          <div>
+            <h2>Truthfile 作为产品控制面</h2>
+            <p>这个页面不只是介绍产品，而是把“产品承诺、当前运行方式、下一步缺口”放到同一个可检查界面里。</p>
+          </div>
+        </div>
+        <div class="tf-flow-chain">
+          <button type="button" class="tf-node" data-node="truth-source">
+            <span class="tf-node-type">Truth</span>
+            <strong>Markdown 源头</strong>
+            <em>TRUTHFILE.md</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="reader-map">
+            <span class="tf-node-type">Reader</span>
+            <strong>网页工作流地图</strong>
+            <em>web/tf/index.html</em>
+          </button>
+          <span class="tf-connector" aria-hidden="true"></span>
+          <button type="button" class="tf-node" data-node="acceptance">
+            <span class="tf-node-type">Proof</span>
+            <strong>验收条件</strong>
+            <em>能否持续跟 Vox 说下去</em>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <aside class="tf-config-panel" aria-label="Selected workflow configuration">
+      <div class="tf-panel-head">
+        <span>Selected module</span>
+        <strong id="panelTitle">打开 Web App</strong>
       </div>
-    </section>
+      <div class="tf-panel-status" id="panelStatus">current</div>
+      <dl class="tf-config-list" id="panelConfig"></dl>
+      <div class="tf-panel-note" id="panelNote"></div>
+    </aside>
+  </div>
 
-    <section>
-      <h2>交流档位 <span class="desc">产品上不是“几套 Prompt”，而是几种 Vox 可以随时切换的说话方式。</span></h2>
-      <div class="tf-card-grid">
-        <article class="tf-card">
-          <div class="tf-card-index">1</div>
-          <h3>中文支架</h3>
-          <p>先用中文帮你抓住意思，再放入短英文表达。适合刚开始、卡住、或者需要先理解场景的时候。</p>
-        </article>
-        <article class="tf-card">
-          <div class="tf-card-index">2</div>
-          <h3>引导式英语</h3>
-          <p>主要用简单英语推进，但保留中文救援。适合能接短句、但遇到长解释会掉线的时候。</p>
-        </article>
-        <article class="tf-card">
-          <div class="tf-card-index">3</div>
-          <h3>英语解释英语</h3>
-          <p>用目标语言本身解释目标语言，只在必要时回到中文。适合已经能跟上主题、想减少翻译依赖的时候。</p>
-        </article>
-      </div>
-    </section>
+  <script>
+    const nodeDetails = {
+      "entry-page": {
+        title: "打开 Web App",
+        status: "current",
+        config: [
+          ["入口", "https://vox.exp.game/voice-course/"],
+          ["默认根路径", "/ 会直接打开 Voice Course"],
+          ["产品形态", "Web App first"]
+        ],
+        note: "学习者先进入语音练习界面，而不是先选择一套复杂课程。"
+      },
+      "config-load": {
+        title: "读取公开配置",
+        status: "live",
+        config: [
+          ["Endpoint", "GET /api/config"],
+          ["返回内容", "auth / realtime / recordings"],
+          ["用途", "前端知道当前登录、模型、录音上限"]
+        ],
+        note: "这个接口只暴露浏览器安全配置；不会暴露 API Key、私有 allowlist 明细或录音内容。"
+      },
+      "auth-gate": {
+        title: "登录与白名单",
+        status: "live",
+        config: [
+          ["当前公网模式", "读取中"],
+          ["Provider", "Supabase"],
+          ["目标登录", "Google OAuth"],
+          ["目标边界", "email/domain allowlist + RLS"]
+        ],
+        note: "当前无登录上线是为了验证 Realtime 和录音链路；扩大使用前要恢复 Google 登录和按学习者隔离的数据。"
+      },
+      "session-mint": {
+        title: "创建短期 Realtime 会话",
+        status: "server",
+        config: [
+          ["Endpoint", "POST /voice/session"],
+          ["长期 API Key", "只在 bridge 侧读取"],
+          ["浏览器拿到", "短期 client_secret"],
+          ["用户标识", "auth user safetyIdentifier"]
+        ],
+        note: "浏览器端不保存长期 OpenAI API Key；bridge 负责换取短期语音会话。"
+      },
+      "voice-model": {
+        title: "Realtime voice model",
+        status: "live",
+        config: [
+          ["Model", "读取中"],
+          ["Voice", "读取中"],
+          ["Output", "audio"],
+          ["Input / Output format", "audio/pcm · 24000 Hz"]
+        ],
+        note: "当前线上值以 /api/config 为准；仓库默认值可由 VOX_REALTIME_MODEL、VOX_REALTIME_VOICE 等环境变量覆盖。"
+      },
+      "webrtc-call": {
+        title: "浏览器语音通话",
+        status: "runtime",
+        config: [
+          ["Client path", "/v1/realtime/calls"],
+          ["Transport", "WebRTC"],
+          ["Frontend", "web/voice-course/index.html"],
+          ["Server creates responses", "由 turn_detection.create_response 决定"]
+        ],
+        note: "前端负责麦克风、音频播放、字幕展示和会话按钮状态。"
+      },
+      "turn-detector": {
+        title: "Turn detection",
+        status: "live",
+        config: [
+          ["Type", "读取中"],
+          ["Eagerness", "读取中"],
+          ["create_response", "读取中"],
+          ["interrupt_response", "读取中"]
+        ],
+        note: "Vox 当前倾向于让学习者说完再回，不抢话；这是语言学习场景比普通助手更重要的参数。"
+      },
+      "conservative-start": {
+        title: "保守开场",
+        status: "product rule",
+        config: [
+          ["默认策略", "短句、熟悉话题、不过早全英文"],
+          ["目标用户", "中文母语 A2-B2 学习者"],
+          ["直接练习回复", "1-2 句短句"]
+        ],
+        note: "第一轮的目的不是证明学习者会多少，而是建立一个不会立刻掉线的起点。"
+      },
+      "understanding-signal": {
+        title: "理解信号",
+        status: "product rule",
+        config: [
+          ["听懂", "能接住意思并继续回答"],
+          ["半懂", "答得偏、犹豫、只抓到关键词"],
+          ["丢了", "停住、频繁要求翻译或重复"]
+        ],
+        note: "验收看学习者能否持续跟 Vox 说下去，不看一次回答的语法是否完美。"
+      },
+      "lane-switch": {
+        title: "切换交流档位",
+        status: "product rule",
+        config: [
+          ["低支架", "自然英语"],
+          ["中支架", "英语解释英语 / 引导式英语"],
+          ["高支架", "中文支架"],
+          ["切换方向", "听不懂就降，跟得上就升"]
+        ],
+        note: "这些不是几套固定 Prompt，而是同一场会话里 Vox 可随时调整的说话方式。"
+      },
+      "next-turn": {
+        title: "改写下一句",
+        status: "loop",
+        config: [
+          ["更简单", "更短句子、更少新词"],
+          ["更清楚", "放慢、换说法、加中文支架"],
+          ["更挑战", "减少中文、提高自然度"]
+        ],
+        note: "Vox 的产品价值在下一句体现：它必须根据上一轮理解情况改变输出。"
+      },
+      "generate-drill": {
+        title: "生成填空题",
+        status: "tool",
+        config: [
+          ["Tool", "generate_drill"],
+          ["题型", "fill-in-the-blank multiple choice"],
+          ["输入", "topic + optional questions"],
+          ["Starter topics", "restaurant / travel / hotel / daily / cafe"]
+        ],
+        note: "练习应该来自刚才的卡点，而不是随机扔一套题。"
+      },
+      "artifact-tab": {
+        title: "发布到 Drill Tab",
+        status: "tool",
+        config: [
+          ["Artifact route", "/artifact/latest/"],
+          ["自动动作", "reload_drill"],
+          ["Tab", "Tab 2"],
+          ["Custom mini-app", "develop_artifact"]
+        ],
+        note: "Vox 可以生成固定模板练习，也可以让 Codex 构建一个自定义 HTML mini-app 放到 Tab 2。"
+      },
+      "drill-state": {
+        title: "练习状态回流",
+        status: "state",
+        config: [
+          ["State fields", "topic / questions / answered / correct / wrong"],
+          ["App state route", "/test/app-state"],
+          ["Voice tool", "get_app_state"]
+        ],
+        note: "模型可以知道用户正在看什么练习，以及练习做到了哪里。"
+      },
+      "prompt-core": {
+        title: "当前 Vox 人设",
+        status: "prompt",
+        config: [
+          ["Source", "data/system_prompt.txt"],
+          ["Role", "Chinese-speaking English learner A2-B2"],
+          ["Tone", "warm, patient, natural"],
+          ["Language", "default English; Chinese rescue when needed"],
+          ["Turn length", "1-2 short sentences"]
+        ],
+        note: "当前公开原型没有按真实登录用户分开的 prompt；会话读取共享基础 Prompt，再追加工具提示。"
+      },
+      "tool-hint": {
+        title: "工具提示追加",
+        status: "runtime",
+        config: [
+          ["App state", "get_app_state"],
+          ["Memory", "list_memory / read_memory / write_memory"],
+          ["Prompt control", "update_system_prompt"],
+          ["Practice", "generate_drill / develop_artifact"],
+          ["Coding worker", "dispatch_codex / get_codex_tasks"]
+        ],
+        note: "Tool hint 在创建 Realtime session 时追加，提醒 Vox 主动使用可用工具。"
+      },
+      "learner-profile": {
+        title: "学习画像",
+        status: "target",
+        config: [
+          ["听力舒适区", "句长、速度、词汇密度"],
+          ["支架偏好", "什么时候用中文，什么时候坚持英文"],
+          ["卡点", "发音、表达、语法、问题类型"],
+          ["复习队列", "下次自然带回来的短语和场景"]
+        ],
+        note: "第一版记 compact profile + session summary；大语义记忆以后再作为辅助。"
+      },
+      "prompt-update": {
+        title: "更新说话策略",
+        status: "tool",
+        config: [
+          ["Tool", "update_system_prompt"],
+          ["持久化", "写入 prompt 文件"],
+          ["实时生效", "push session.update"],
+          ["边界", "需要确认，因为会影响后续行为"]
+        ],
+        note: "这是 Vox 自我调整的控制点，但当前 TF 页面只展示，不提供编辑入口。"
+      },
+      "recording-save": {
+        title: "保存录音",
+        status: "live",
+        config: [
+          ["Endpoint", "POST /api/recordings"],
+          ["Max bytes", "读取中"],
+          ["Files", "audio / transcript / captions / events"],
+          ["成功文案边界", "后端接受后才能说已保存"]
+        ],
+        note: "如果上传失败，Vox 应明确停下并要求重试或登录，而不是假装保存成功。"
+      },
+      "subtitle-translate": {
+        title: "英文字幕转中文",
+        status: "live",
+        config: [
+          ["Endpoint", "POST /api/translate"],
+          ["Target", "Simplified Chinese"],
+          ["Max chars", "1200"],
+          ["Rate limit", "60 / minute / client"],
+          ["Cache", "500 entries"]
+        ],
+        note: "中文字幕用于保住理解，不是把整场练习变成翻译课。"
+      },
+      "recording-list": {
+        title: "按用户读取历史",
+        status: "auth-bound",
+        config: [
+          ["Endpoint", "GET /api/recordings"],
+          ["Filter", "user id before limit"],
+          ["Privacy target", "one learner cannot read another learner"]
+        ],
+        note: "当前无登录原型会落到 dev-local user；正式使用前必须恢复真实身份隔离。"
+      },
+      "truth-source": {
+        title: "Markdown 源头",
+        status: "truth",
+        config: [
+          ["File", "TRUTHFILE.md"],
+          ["Audience", "future agent"],
+          ["Purpose", "产品方向、边界、验收"],
+          ["Rule", "写产品能力，不写迭代流水账"]
+        ],
+        note: "Markdown 是 agent 工作记忆；网页是 Rick 的主要对齐面。"
+      },
+      "reader-map": {
+        title: "网页工作流地图",
+        status: "experiment",
+        config: [
+          ["File", "web/tf/index.html"],
+          ["Shape", "left nav + workflow modules + config panel"],
+          ["Editable", "no"],
+          ["Goal", "产品流程和当前配置一眼可查"]
+        ],
+        note: "这是一次新的 Truthfile 写作规范尝试：把产品承诺显示为运行流程，而不是只写散文。"
+      },
+      "acceptance": {
+        title: "验收条件",
+        status: "product test",
+        config: [
+          ["同场调整", "听不懂时降低难度，跟得上时减少中文"],
+          ["下次记得", "会话总结进入学习画像"],
+          ["保存真实", "后端接受后才说保存成功"],
+          ["用户感受", "不用频繁停下来问“什么意思”"]
+        ],
+        note: "最终判断不靠页面好看，而靠 Vox 是否真的让学习者持续开口。"
+      }
+    };
 
-    <section>
-      <h2>听懂校准 <span class="desc">它应该像聊天，不像测试。</span></h2>
-      <ol class="tf-steps">
-        <li>从你熟悉的话题开始，降低第一次开口的压力。</li>
-        <li>先问一个短英文问题，看你是否理解意思。</li>
-        <li>如果你答得上，就把下一轮稍微变难一点。</li>
-        <li>如果你停住、答偏、或只听懂一半，就换成更短的英语或加中文支架。</li>
-        <li>整场对话持续记录“什么难度你能接住”，而不是只给一个静态等级。</li>
-      </ol>
-    </section>
+    const panelTitle = document.getElementById("panelTitle");
+    const panelStatus = document.getElementById("panelStatus");
+    const panelConfig = document.getElementById("panelConfig");
+    const panelNote = document.getElementById("panelNote");
+    let selectedNode = "entry-page";
 
-    <section>
-      <h2>长期记忆 <span class="desc">第一版推荐记“学习画像”，不要把大段原始聊天当记忆核心。</span></h2>
-      <div class="tf-memory-list">
-        <div>
-          <strong>当前水平</strong>
-          <span>能听懂多长的句子、什么速度、什么词汇密度。</span>
-        </div>
-        <div>
-          <strong>支架偏好</strong>
-          <span>什么时候需要中文，什么时候应该坚持用英语解释。</span>
-        </div>
-        <div>
-          <strong>常见卡点</strong>
-          <span>反复听不准的音、答不上来的问题类型、容易混的表达。</span>
-        </div>
-        <div>
-          <strong>有效教法</strong>
-          <span>你更适合直接纠错、换一种说法、给例句，还是立刻做一个小练习。</span>
-        </div>
-        <div>
-          <strong>复习线索</strong>
-          <span>下次对话要自然带回来的短语、场景和发音点。</span>
-        </div>
-      </div>
-    </section>
+    function renderNode(id) {
+      const detail = nodeDetails[id];
+      if (!detail) return;
+      selectedNode = id;
+      document.querySelectorAll(".tf-node, .tf-chip").forEach((el) => {
+        el.classList.toggle("is-active", el.dataset.node === id);
+      });
+      panelTitle.textContent = detail.title;
+      panelStatus.textContent = detail.status;
+      panelConfig.replaceChildren();
+      for (const [key, value] of detail.config) {
+        const term = document.createElement("dt");
+        const description = document.createElement("dd");
+        term.textContent = key;
+        description.textContent = value;
+        panelConfig.append(term, description);
+      }
+      panelNote.textContent = detail.note;
+    }
 
-    <section>
-      <h2>交付边界 <span class="desc">先保证每个学习者有自己的记忆，再扩大到更多入口。</span></h2>
-      <div class="tf-memory-list">
-        <div>
-          <strong>当前先无登录上线</strong>
-          <span>今天先让实时语音和录音保存链路在公网跑通。这个模式只用于验证管道，不是最终隐私边界；扩大使用前要恢复 Google 登录、白名单和按学习者隔离的数据。</span>
-        </div>
-        <div>
-          <strong>先做 Web App</strong>
-          <span>学习者登录后直接开始语音对话课，不先绕进复杂课程选择。</span>
-        </div>
-        <div>
-          <strong>Google 登录</strong>
-          <span>第一版用 Google 账号区分学习者；Supabase 保存学习画像和会话总结，数据只回到自己的账号。</span>
-        </div>
-        <div>
-          <strong>早期白名单</strong>
-          <span>Google 登录只是确认身份，能不能进入由后端白名单决定。先开放给受控用户，观察体验是否真的变好。</span>
-        </div>
-      </div>
-    </section>
+    document.querySelectorAll("[data-node]").forEach((el) => {
+      el.addEventListener("click", () => renderNode(el.dataset.node));
+    });
 
-    <section>
-      <h2>第一版验收 <span class="desc">打样只看体验是否真的变聪明。</span></h2>
-      <div class="tf-card-grid">
-        <article class="tf-card">
-          <div class="tf-card-index">A</div>
-          <h3>同场调整</h3>
-          <p>你听不懂时，Vox 下一句自动降低难度；你跟得上时，Vox 逐步减少中文。</p>
-        </article>
-        <article class="tf-card">
-          <div class="tf-card-index">B</div>
-          <h3>下次记得</h3>
-          <p>结束后保存一份短学习画像；下一次开场不再像新用户一样重新摸索。</p>
-        </article>
-        <article class="tf-card">
-          <div class="tf-card-index">C</div>
-          <h3>保存状态真实</h3>
-          <p>只有后台真正收下录音后，Vox 才说已保存；如果上传中断，就明确停下并提示重新登录或重试。</p>
-        </article>
-        <article class="tf-card">
-          <div class="tf-card-index">D</div>
-          <h3>用户能感到差异</h3>
-          <p>判断标准很朴素：这个难度下，你能不能不用频繁打断，也能持续跟 Vox 说下去。</p>
-        </article>
-      </div>
-    </section>
-  </main>
+    async function hydrateLiveConfig() {
+      try {
+        const resp = await fetch("/api/config", { cache: "no-store" });
+        const cfg = await resp.json();
+        if (!cfg.ok) throw new Error("bad config");
+        const auth = cfg.auth || {};
+        const realtime = cfg.realtime || {};
+        const recordings = cfg.recordings || {};
+        const vad = realtime.turn_detection || {};
+        const authLabel = auth.required ? "需要登录" : "当前无登录";
+        const modelLabel = realtime.model || "unknown";
+        const vadLabel = [vad.type, vad.eagerness].filter(Boolean).join(" · ") || "unknown";
 
-  <footer class="foot">
-    <span>Vox Truthfile</span>
-    <span>Focus: adaptive voice companion + learner memory</span>
-  </footer>
+        document.getElementById("liveStatus").textContent = "live config loaded";
+        document.getElementById("liveAuth").textContent = authLabel;
+        document.getElementById("liveModel").textContent = modelLabel;
+        document.getElementById("liveVad").textContent = vadLabel;
+        document.getElementById("authNodeHint").textContent = authLabel;
+        document.getElementById("modelNodeHint").textContent = `${modelLabel} · ${realtime.voice || "voice unknown"}`;
+        document.getElementById("vadNodeHint").textContent = vadLabel;
+
+        nodeDetails["auth-gate"].config = [
+          ["当前公网模式", auth.required ? "VOX_AUTH_REQUIRED=true" : "VOX_AUTH_REQUIRED=false"],
+          ["Provider", auth.provider || "supabase"],
+          ["Supabase configured", String(Boolean(auth.configured))],
+          ["Allowlist configured", String(Boolean(auth.allowlistConfigured))],
+          ["目标登录", "Google OAuth + allowlist + RLS"]
+        ];
+        nodeDetails["voice-model"].config = [
+          ["Model", modelLabel],
+          ["Voice", realtime.voice || "unknown"],
+          ["Output", (realtime.output_modalities || []).join(", ") || "audio"],
+          ["Transcription", realtime.transcription_model || "unknown"],
+          ["Reasoning effort", realtime.reasoning_effort || "not exposed / not enabled"],
+          ["Input / Output format", "audio/pcm · 24000 Hz"]
+        ];
+        nodeDetails["turn-detector"].config = [
+          ["Type", vad.type || "unknown"],
+          ["Eagerness", vad.eagerness || "n/a"],
+          ["create_response", String(Boolean(vad.create_response))],
+          ["interrupt_response", String(Boolean(vad.interrupt_response))]
+        ];
+        nodeDetails["recording-save"].config = [
+          ["Endpoint", "POST /api/recordings"],
+          ["Enabled", String(Boolean(recordings.enabled))],
+          ["Max bytes", `${Math.round((recordings.max_bytes || 0) / 1024 / 1024)} MB`],
+          ["Files", "audio / transcript / captions / events"],
+          ["成功文案边界", "后端接受后才能说已保存"]
+        ];
+        if (selectedNode in nodeDetails) renderNode(selectedNode);
+      } catch {
+        document.getElementById("liveStatus").textContent = "live config unavailable";
+      }
+    }
+
+    renderNode(selectedNode);
+    hydrateLiveConfig();
+  </script>
 </body>
 </html>

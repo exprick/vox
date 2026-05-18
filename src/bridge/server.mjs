@@ -1,8 +1,15 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { authenticateRequest, publicAuthConfig, HttpError } from './auth.mjs';
-import { createRealtimeSession, transcribeWavBuffer } from './voice.mjs';
+import {
+  createRealtimeSession,
+  normalizeSubtitleTargetLanguage,
+  realtimeSessionConfig,
+  transcribeWavBuffer,
+  translateSubtitleText,
+} from './voice.mjs';
 import { listRecordings, saveRecording } from './recordings.mjs';
 import { dispatchArtifactCreate } from './dispatch.mjs';
 import { createFillBlankArtifact } from './fill-blank-template.mjs';
@@ -27,6 +34,16 @@ let webRealpathCache = null;
 const MAX_CMD_QUEUE = Number(process.env.MAX_CMD_QUEUE || 200);
 const MAX_CMD_RESULTS = Number(process.env.MAX_CMD_RESULTS || 200);
 const CMD_RESULT_TTL_MS = Number(process.env.CMD_RESULT_TTL_MS || 10 * 60 * 1000);
+const SUBTITLE_TRANSLATION_MAX_CHARS = Number(process.env.VOX_SUBTITLE_TRANSLATION_MAX_CHARS || 1200);
+const SUBTITLE_TRANSLATION_RATE_LIMIT = Number(process.env.VOX_SUBTITLE_TRANSLATION_RATE_LIMIT || 60);
+const SUBTITLE_TRANSLATION_WINDOW_MS = Number(process.env.VOX_SUBTITLE_TRANSLATION_WINDOW_MS || 60_000);
+const SUBTITLE_TRANSLATION_CACHE_MAX = Number(process.env.VOX_SUBTITLE_TRANSLATION_CACHE_MAX || 500);
+const SUBTITLE_TRANSLATION_CACHE_TTL_MS = Number(process.env.VOX_SUBTITLE_TRANSLATION_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
+const SUBTITLE_TRANSLATION_CLIENTS_MAX = Number(process.env.VOX_SUBTITLE_TRANSLATION_CLIENTS_MAX || 1000);
+const SUBTITLE_TRANSLATION_SWEEP_INTERVAL_MS = Number(process.env.VOX_SUBTITLE_TRANSLATION_SWEEP_INTERVAL_MS || 60_000);
+const subtitleTranslationCache = new Map();
+const subtitleTranslationHits = new Map();
+let lastSubtitleTranslationSweepMs = 0;
 
 // in-memory test state ring buffer for iOS RealtimeClient → bridge IPC during E2E
 const stateHistory = [];
@@ -66,13 +83,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === 'GET /api/config') {
+      const realtime = publicRealtimeConfig();
       respond(res, 200, {
         ok: true,
         auth: publicAuthConfig(),
-        realtime: {
-          model: process.env.VOX_REALTIME_MODEL || 'gpt-realtime',
-          voice: process.env.VOX_REALTIME_VOICE || 'marin',
-        },
+        realtime,
         recordings: {
           enabled: true,
           max_bytes: MAX_RECORDING_BYTES,
@@ -131,6 +146,47 @@ const server = http.createServer(async (req, res) => {
       const user = await authenticateRequest(req);
       const recordings = await listRecordings({ user });
       respond(res, 200, { ok: true, recordings });
+      return;
+    }
+    if (route === 'POST /api/translate') {
+      const user = await authenticateOrLocalBridge(req);
+      const body = await readBody(req);
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) { respond(res, 400, { ok: false, error: 'text is required' }); return; }
+      if (text.length > SUBTITLE_TRANSLATION_MAX_CHARS) {
+        respond(res, 400, { ok: false, error: 'text too long' });
+        return;
+      }
+      let targetLanguage;
+      try {
+        targetLanguage = normalizeSubtitleTargetLanguage(body.target_language || 'Simplified Chinese');
+      } catch {
+        respond(res, 400, { ok: false, error: 'unsupported target_language' });
+        return;
+      }
+      const clientKey = translationClientKey(user, req);
+      const cacheKey = subtitleTranslationCacheKey(text, targetLanguage, clientKey);
+      const cached = subtitleTranslationCache.get(cacheKey);
+      // TTL is based on creation time so a bad translation cannot live forever just because it is popular.
+      if (cached && Date.now() - cached.ts <= SUBTITLE_TRANSLATION_CACHE_TTL_MS) {
+        subtitleTranslationCache.delete(cacheKey);
+        subtitleTranslationCache.set(cacheKey, cached);
+        respond(res, 200, { ok: true, ...cached.result, cached: true, cached_at: new Date(cached.ts).toISOString() });
+        return;
+      }
+      if (cached) subtitleTranslationCache.delete(cacheKey);
+      if (!allowSubtitleTranslation(clientKey)) {
+        respond(res, 429, { ok: false, error: 'translation_rate_limited' });
+        return;
+      }
+      try {
+        const result = await translateSubtitleText(text, { targetLanguage });
+        rememberSubtitleTranslation(cacheKey, result);
+        respond(res, 200, { ok: true, ...result });
+      } catch (error) {
+        console.warn(`[vox] subtitle translation failed: ${error?.message || error}`);
+        respond(res, 502, { ok: false, error: 'translation_failed' });
+      }
       return;
     }
     if (route === 'POST /artifact/create') {
@@ -416,17 +472,98 @@ function respond(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function publicRealtimeConfig() {
+  const { session, model, voice } = realtimeSessionConfig({
+    instructions: ' ',
+    clientResponseCreate: true,
+    warn: () => {},
+  });
+  return {
+    model,
+    voice,
+    output_modalities: session.output_modalities,
+    reasoning_effort: session.reasoning?.effort,
+    transcription_model: session.audio.input.transcription?.model,
+    turn_detection: session.audio.input.turn_detection,
+  };
+}
+
+function subtitleTranslationCacheKey(text, targetLanguage, clientKey) {
+  // Keep subtitle cache entries per authenticated caller. Anonymous local/dev
+  // traffic falls back to a network bucket, but authenticated users do not share
+  // `cached` and `cached_at` same-phrase timing with other users.
+  // `rememberSubtitleTranslation` still enforces the shared LRU cap.
+  return crypto
+    .createHash('sha256')
+    .update(`${clientKey}\0${targetLanguage}\0${text}`)
+    .digest('hex');
+}
+
+function rememberSubtitleTranslation(key, result) {
+  subtitleTranslationCache.set(key, { result, ts: Date.now() });
+  while (subtitleTranslationCache.size > SUBTITLE_TRANSLATION_CACHE_MAX) {
+    const oldest = subtitleTranslationCache.keys().next().value;
+    if (!oldest) break;
+    subtitleTranslationCache.delete(oldest);
+  }
+}
+
+function translationClientKey(user, req) {
+  return user?.safetyIdentifier || user?.id || normalizeNetworkAddress(req.socket.remoteAddress || 'unknown');
+}
+
+function allowSubtitleTranslation(key) {
+  const now = Date.now();
+  if (now - lastSubtitleTranslationSweepMs >= SUBTITLE_TRANSLATION_SWEEP_INTERVAL_MS) {
+    sweepSubtitleTranslationHits(now);
+    lastSubtitleTranslationSweepMs = now;
+  }
+  const existing = subtitleTranslationHits.get(key) || [];
+  const recent = existing.filter((ts) => now - ts < SUBTITLE_TRANSLATION_WINDOW_MS);
+  if (recent.length >= SUBTITLE_TRANSLATION_RATE_LIMIT) {
+    subtitleTranslationHits.set(key, recent);
+    return false;
+  }
+  recent.push(now);
+  subtitleTranslationHits.delete(key);
+  subtitleTranslationHits.set(key, recent);
+  return true;
+}
+
+function sweepSubtitleTranslationHits(now = Date.now()) {
+  for (const [key, hits] of subtitleTranslationHits) {
+    const recent = hits.filter((ts) => now - ts < SUBTITLE_TRANSLATION_WINDOW_MS);
+    if (recent.length) subtitleTranslationHits.set(key, recent);
+    else subtitleTranslationHits.delete(key);
+  }
+  while (subtitleTranslationHits.size > SUBTITLE_TRANSLATION_CLIENTS_MAX) {
+    const oldest = subtitleTranslationHits.keys().next().value;
+    if (!oldest) break;
+    subtitleTranslationHits.delete(oldest);
+  }
+}
+
 async function serveStatic(req, res) {
+  let url;
   let pathname;
   try {
-    pathname = decodeURIComponent(new URL(req.url, 'http://vox.local').pathname);
+    url = new URL(req.url, 'http://vox.local');
+    pathname = decodeURIComponent(url.pathname);
   } catch {
     respond(res, 400, { error: 'bad url' });
     return true;
   }
-  const rel = pathname === '/' ? 'index.html'
-    : pathname.endsWith('/') ? `${pathname.slice(1)}index.html`
-      : pathname.slice(1);
+  if (pathname === '/') {
+    res.writeHead(307, {
+      'Location': `/voice-course/${url.search}`,
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end();
+    return true;
+  }
+  const rel = pathname.endsWith('/') ? `${pathname.slice(1)}index.html`
+    : pathname.slice(1);
   const normalized = path.normalize(rel);
   if (normalized === '..' || normalized.startsWith(`..${path.sep}`) || path.isAbsolute(normalized)) {
     respond(res, 400, { error: 'bad path' });
@@ -441,6 +578,18 @@ async function serveStatic(req, res) {
     }
     if (req.method === 'HEAD') {
       const stats = await fs.stat(fileRealpath);
+      if (stats.isDirectory()) {
+        if (!pathname.endsWith('/')) {
+          res.writeHead(308, {
+            'Location': `${url.pathname}/${url.search}`,
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end();
+          return true;
+        }
+        return false;
+      }
       res.writeHead(200, {
         'Content-Type': contentTypeFor(fileRealpath),
         'Content-Length': stats.size,
@@ -449,7 +598,24 @@ async function serveStatic(req, res) {
       res.end();
       return true;
     }
-    const data = await fs.readFile(fileRealpath);
+    let data;
+    try {
+      data = await fs.readFile(fileRealpath);
+    } catch (error) {
+      if (error?.code === 'EISDIR') {
+        if (!pathname.endsWith('/')) {
+          res.writeHead(308, {
+            'Location': `${url.pathname}/${url.search}`,
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end();
+          return true;
+        }
+        return false;
+      }
+      throw error;
+    }
     res.writeHead(200, {
       'Content-Type': contentTypeFor(fileRealpath),
       'Content-Length': data.length,

@@ -33,6 +33,8 @@ OPENAI_API_KEY=... VOX_AUTH_REQUIRED=0 node src/bridge/server.mjs
 
 The bridge listens on `PORT=3203` by default and serves `web/` plus the API routes on the same origin.
 
+Realtime sessions follow the current OpenAI voice-agent recommendations by default: WebRTC client secrets, `gpt-realtime-2`, `reasoning.effort=low`, `voice=marin`, `gpt-realtime-whisper` input transcription, and `semantic_vad` with low eagerness so learners can pause. Override with `VOX_REALTIME_MODEL`, `VOX_REALTIME_REASONING_EFFORT`, `VOX_REALTIME_VOICE`, `VOX_TRANSCRIPTION_MODEL`, `VOX_VAD_TYPE`, and `VOX_VAD_EAGERNESS` only when a deployment has measured evidence to tune them.
+
 Production login requires:
 
 ```bash
@@ -48,6 +50,17 @@ node src/bridge/server.mjs
 Runtime recordings are written under `VOX_RECORDINGS_DIR` and must not be committed.
 
 Requests that arrive through a proxy or public tunnel must pass Supabase auth before they can mint Realtime sessions, call tools, poll commands, or read uploaded artifacts. For simulator-only bridge development, `VOX_ALLOW_LOCAL_BRIDGE_BYPASS=1` allows no-token loopback calls only when both the remote address and `Host` header are localhost/127.0.0.1; keep it disabled in production.
+
+## Voice E2E
+
+The unattended Web voice E2E harness starts the bridge, opens Chromium, feeds a fixed learner utterance into `/voice-course/`, waits for a user turn, a Vox turn, and a Chinese Vox subtitle, runs semantic transcript checks, ends the call, and verifies that a recording was saved.
+
+```bash
+npm run test:e2e:voice:check
+npm run test:e2e:voice:loopback
+```
+
+The runner reads `.env` when present, without overriding exported environment variables. The default `loopback` mode expects a macOS virtual audio device such as `BlackHole 2ch` or Loopback and uses `SwitchAudioSource` to route `afplay` into the browser microphone path. Set `VOX_E2E_LOOPBACK_DEVICE` when the device has a different name. `npm run test:e2e:voice:file` uses Chromium's file-backed fake microphone input as a CI fallback, but it is not a substitute for loopback or real iPhone testing.
 
 ## iOS
 

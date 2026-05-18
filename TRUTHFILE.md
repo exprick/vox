@@ -36,6 +36,22 @@ Google login proves identity, but it does not make Vox private by itself. The ba
 
 ## Product Shape
 
+### Reader-Facing Workflow Map
+
+The web Truthfile should now read like a workflow workbench, not only like a prose product memo.
+
+`web/tf/index.html` should show:
+
+- A left navigation rail listing the major Vox flows.
+- A center canvas where each flow is broken into modules and loops.
+- A right configuration panel that exposes the selected module's current read-only settings.
+
+The map should make the whole product inspectable: entry and login, realtime voice setup, understandability calibration, drill generation, memory and prompt control, recording and subtitle handling, and Truthfile governance.
+
+Runtime configuration can be shown when it is browser-safe, such as auth mode, Realtime model, voice, turn detection, transcription model, and recording size limit. Secrets, private allowlist contents, raw learner data, recordings, and local harness state must not be exposed.
+
+This is a reader interface experiment: it should help Rick see how the product actually runs, which parts are current, which parts are target-state, and where each product promise is enforced.
+
 ### Adaptive Conversation Lanes
 
 Vox should carry several conversation lanes and move between them during the same session.

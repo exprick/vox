@@ -119,8 +119,10 @@ function normalizeTranscript(transcript) {
   return transcript
     .filter((turn) => turn && typeof turn.role === 'string' && typeof turn.text === 'string' && turn.text.trim())
     .map((turn) => ({
+      id: typeof turn.id === 'string' ? turn.id.slice(0, 64) : undefined,
       role: turn.role.slice(0, 32),
       text: turn.text.slice(0, 2000),
+      zh: typeof turn.zh === 'string' ? turn.zh.slice(0, 2000) : undefined,
       ts: typeof turn.ts === 'number' && Number.isFinite(turn.ts) ? turn.ts : null,
     }));
 }
@@ -139,7 +141,10 @@ function normalizeEvents(events) {
 }
 
 function transcriptText(transcript) {
-  const lines = transcript.map((turn) => `[${turn.role}] ${turn.text}`);
+  const lines = transcript.map((turn) => {
+    const zh = turn.zh ? `\n[${turn.role}.zh] ${turn.zh}` : '';
+    return `[${turn.role}] ${turn.text}${zh}`;
+  });
   return `${lines.join('\n')}${lines.length ? '\n' : ''}`;
 }
 
@@ -174,7 +179,8 @@ function captionCues(transcript, durationMs) {
     start = Math.max(start, previousEnd);
     end = Math.max(end, start + 500);
     previousEnd = end;
-    return { start, end, text: captionText(`${turn.role}: ${turn.text}`) };
+    const subtitle = turn.zh ? ` / ${turn.zh}` : '';
+    return { start, end, text: captionText(`${turn.role}: ${turn.text}${subtitle}`) };
   });
 }
 

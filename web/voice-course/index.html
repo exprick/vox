@@ -309,6 +309,72 @@
       min-width: 0;
     }
 
+    .subtitle-strip {
+      max-width: 760px;
+      margin: 0 auto 10px;
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+    }
+
+    .subtitle-toggle {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      min-height: 30px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #fff;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .subtitle-toggle i {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--teal);
+      box-shadow: 0 0 0 4px rgba(15, 159, 143, 0.12);
+    }
+
+    .subtitle-toggle[aria-pressed="false"] i {
+      background: rgba(101, 113, 134, 0.46);
+      box-shadow: none;
+    }
+
+    .subtitle-status {
+      min-width: 0;
+      text-align: right;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .zh-subtitle {
+      margin: 1px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
+    }
+
+    .zh-subtitle.pending {
+      opacity: 0.62;
+      font-style: italic;
+    }
+
+    .zh-subtitle.error {
+      opacity: 0.72;
+      font-style: italic;
+    }
+
     .login {
       position: fixed;
       inset: 0;
@@ -588,11 +654,11 @@
       margin: 6px -24px 0;
       overflow-y: auto;
       overscroll-behavior: contain;
-      padding: 44px 28px 18px;
+      padding: 44px 28px 42px;
       background: transparent;
       scrollbar-width: none;
-      mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
-      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 28px), transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 28px), transparent 100%);
     }
 
     .public-learner-shell .transcript::-webkit-scrollbar { display: none; }
@@ -654,6 +720,16 @@
       font-size: clamp(28px, 7vw, 33px);
     }
 
+    .public-learner-shell .turn.long.current .text {
+      font-size: clamp(23px, 5.6vw, 27px);
+      line-height: 1.15;
+    }
+
+    .public-learner-shell .turn.longer.current .text {
+      font-size: clamp(20px, 4.9vw, 24px);
+      line-height: 1.14;
+    }
+
     .public-learner-shell .turn.user.current .text {
       color: rgba(180, 66, 53, 0.92);
       font-size: clamp(25px, 6.2vw, 30px);
@@ -664,6 +740,21 @@
       font-size: 13px;
       line-height: 1.45;
       color: rgba(39, 20, 15, 0.48);
+    }
+
+    .public-learner-shell .zh-subtitle {
+      font: 15px/1.35 var(--sans);
+      color: rgba(39, 20, 15, 0.50);
+    }
+
+    .public-learner-shell .turn.current .zh-subtitle {
+      color: rgba(39, 20, 15, 0.58);
+    }
+
+    .public-learner-shell .turn.long .zh-subtitle,
+    .public-learner-shell .turn.longer .zh-subtitle {
+      font-size: 14px;
+      line-height: 1.32;
     }
 
     .public-learner-shell .controls {
@@ -677,6 +768,37 @@
       max-width: none;
       grid-template-columns: 1fr;
       gap: 10px;
+    }
+
+    .public-learner-shell .subtitle-strip {
+      max-width: none;
+      margin-bottom: 6px;
+      min-height: 28px;
+      justify-content: center;
+      gap: 10px;
+      color: rgba(39, 20, 15, 0.50);
+    }
+
+    .public-learner-shell .subtitle-toggle {
+      min-height: 28px;
+      border: 0;
+      background: rgba(255, 246, 236, 0.32);
+      color: rgba(39, 20, 15, 0.58);
+      font-size: 12px;
+      padding: 0 10px;
+    }
+
+    .public-learner-shell .subtitle-toggle i {
+      background: rgba(180, 66, 53, 0.78);
+      box-shadow: 0 0 0 4px rgba(180, 66, 53, 0.10);
+    }
+
+    .public-learner-shell .subtitle-toggle[aria-pressed="false"] i {
+      background: rgba(39, 20, 15, 0.28);
+    }
+
+    .public-learner-shell .subtitle-status {
+      display: none;
     }
 
     .public-learner-shell .primary-btn {
@@ -759,6 +881,7 @@
         margin-right: -22px;
         padding-left: 26px;
         padding-right: 26px;
+        padding-bottom: 48px;
       }
     }
 
@@ -768,6 +891,8 @@
       .public-learner-shell .transcript { padding-top: 24px; }
       .public-learner-shell .turns { gap: 18px; }
       .public-learner-shell .turn.current .text { font-size: 27px; }
+      .public-learner-shell .turn.long.current .text { font-size: 23px; }
+      .public-learner-shell .turn.longer.current .text { font-size: 20px; }
       .public-learner-shell .text { font-size: 23px; }
     }
   </style>
@@ -810,6 +935,12 @@
       </section>
 
       <footer class="controls">
+        <div class="subtitle-strip" aria-label="Subtitle settings">
+          <button class="subtitle-toggle" type="button" id="subtitleToggle" aria-pressed="true">
+            <i aria-hidden="true"></i><span>中文字幕</span>
+          </button>
+          <small class="subtitle-status" id="subtitleStatus">Vox English shows Chinese subtitle</small>
+        </div>
         <div class="control-inner">
           <button class="primary-btn" type="button" id="callButton" disabled>
             <span>Start live voice</span>
@@ -848,6 +979,8 @@
       accountLabel: document.getElementById("accountLabel"),
       statusBadge: document.getElementById("statusBadge"),
       connectionBadge: document.getElementById("connectionBadge"),
+      subtitleToggle: document.getElementById("subtitleToggle"),
+      subtitleStatus: document.getElementById("subtitleStatus"),
       callButton: document.getElementById("callButton"),
       turns: document.getElementById("turns"),
       remoteAudio: document.getElementById("remoteAudio"),
@@ -860,9 +993,15 @@
     // Public launch preview: this is static English practice copy, not session history.
     const previewTurns = [
       { role: "user", text: "I want to order coffee.", preview: true },
-      { role: "assistant", text: "Good. You can say: \"Can I get a small latte?\"", preview: true },
-      { role: "assistant", text: "Now try it once. Keep it short and natural.", preview: true }
+      { role: "assistant", text: "Good. You can say: \"Can I get a small latte?\"", zh: "很好。可以这样说：“Can I get a small latte?”", preview: true },
+      { role: "assistant", text: "Now try it once. Keep it short and natural.", zh: "现在你试一次。短一点，自然一点。", preview: true }
     ];
+
+    const SUBTITLE_PREF_KEY = "vox.showChineseSubtitles";
+    const SUBTITLE_REQUEST_TIMEOUT_MS = 12000;
+    const SUBTITLE_RETRY_AFTER_MS = 15000;
+    const SUBTITLE_MAX_TRIES = 2;
+    const RECORDING_HEADER_MAX_CHARS = 6000;
 
     const state = {
       config: null,
@@ -886,6 +1025,8 @@
       startedAt: "",
       startedMs: 0,
       turns: [],
+      nextTurnId: 1,
+      showChineseSubtitles: readSubtitlePreference(),
       assistantDraft: "",
       assistantDraftIndex: null,
       responseActive: false,
@@ -896,8 +1037,11 @@
       inputCommitDuringAssistantOutput: false,
       inputCommitEchoText: "",
       assistantOutputActive: false,
+      assistantEchoText: "",
       lastAssistantText: "",
       serverCreatesResponses: false,
+      subtitleBackfillRunning: false,
+      subtitleRetryTimer: null,
       realtimeEvents: [],
       pendingRecording: null,
       authExpiredHandling: false,
@@ -918,6 +1062,20 @@
     });
     els.signOutButton.addEventListener("click", signOut);
     els.refreshRecordingsButton.addEventListener("click", refreshRecordings);
+    els.subtitleToggle.addEventListener("click", () => {
+      state.showChineseSubtitles = !state.showChineseSubtitles;
+      writeSubtitlePreference(state.showChineseSubtitles);
+      if (state.showChineseSubtitles) requestMissingAssistantSubtitles();
+      renderSubtitleControls();
+      renderTurns();
+    });
+    window.addEventListener("storage", (event) => {
+      if (event.key !== SUBTITLE_PREF_KEY) return;
+      state.showChineseSubtitles = readSubtitlePreference();
+      if (state.showChineseSubtitles) requestMissingAssistantSubtitles();
+      renderSubtitleControls();
+      renderTurns();
+    });
     els.callButton.addEventListener("click", () => {
       if (state.phase === "live" || state.phase === "connecting") stopCall();
       else startCall();
@@ -1032,11 +1190,13 @@
       state.inputCommitDuringAssistantOutput = false;
       state.inputCommitEchoText = "";
       state.assistantOutputActive = false;
+      state.assistantEchoText = "";
       state.lastAssistantText = "";
       state.serverCreatesResponses = false;
       state.realtimeEvents = [];
       // Seed the transcript before flipping the call state so the learner shell never flashes empty.
       state.turns = [];
+      state.nextTurnId = 1;
       addTurn("system", "Session started. Vox will begin conservatively.");
       setPhase("connecting");
 
@@ -1171,6 +1331,7 @@
       state.inputCommitDuringAssistantOutput = false;
       state.inputCommitEchoText = "";
       state.assistantOutputActive = false;
+      state.assistantEchoText = "";
       state.lastAssistantText = "";
       els.remoteAudio.srcObject = null;
     }
@@ -1323,27 +1484,48 @@
     }
 
     function recordingTranscriptHeader() {
-      let turns = state.turns.slice(-40).map((turn) => ({
+      const turns = state.turns.slice(-40).map((turn) => ({
+        id: turn.id || null,
         role: turn.role,
         text: String(turn.text || "").slice(0, 500),
+        zh: String(turn.zh || "").slice(0, 500),
         ts: turn.ts || null
       }));
-      let encoded = encodeURIComponent(JSON.stringify(turns));
-      while (encoded.length > 6000 && turns.length > 1) {
-        turns = turns.slice(1);
-        encoded = encodeURIComponent(JSON.stringify(turns));
-      }
-      return encoded;
+      return encodeJsonHeaderWithinLimit(turns, (turn, limit) => ({
+        ...turn,
+        text: String(turn.text || "").slice(0, limit),
+        zh: String(turn.zh || "").slice(0, limit)
+      }));
     }
 
     function recordingEventsHeader() {
-      let events = state.realtimeEvents.slice(-120);
-      let encoded = encodeURIComponent(JSON.stringify(events));
-      while (encoded.length > 6000 && events.length > 1) {
-        events = events.slice(1);
-        encoded = encodeURIComponent(JSON.stringify(events));
+      const events = state.realtimeEvents.slice(-120);
+      return encodeJsonHeaderWithinLimit(events, shrinkRealtimeEventHeader);
+    }
+
+    function encodeJsonHeaderWithinLimit(items, shrinkItem) {
+      let current = Array.isArray(items) ? items : [];
+      let encoded = encodeURIComponent(JSON.stringify(current));
+      while (encoded.length > RECORDING_HEADER_MAX_CHARS && current.length > 1) {
+        current = current.slice(1);
+        encoded = encodeURIComponent(JSON.stringify(current));
       }
-      return encoded;
+      for (const limit of [250, 120, 60, 0]) {
+        if (encoded.length <= RECORDING_HEADER_MAX_CHARS || current.length !== 1) break;
+        current = current.map((item) => shrinkItem(item, limit));
+        encoded = encodeURIComponent(JSON.stringify(current));
+      }
+      return encoded.length <= RECORDING_HEADER_MAX_CHARS
+        ? encoded
+        : encodeURIComponent("[]");
+    }
+
+    function shrinkRealtimeEventHeader(event, limit) {
+      if (!event || typeof event !== "object") return event;
+      return Object.fromEntries(Object.entries(event).map(([key, value]) => [
+        key,
+        typeof value === "string" && !["type", "role", "kind"].includes(key) ? value.slice(0, limit) : value
+      ]));
     }
 
     async function flushPendingRecording() {
@@ -1387,6 +1569,7 @@
           if (!state.inputCommitDuringAssistantOutput) state.inputCommitEchoText = "";
           state.assistantDraft = "";
           state.assistantDraftIndex = null;
+          state.assistantEchoText = "";
           state.lastAssistantText = "";
           startResponseWatchdog();
           setPhase("live");
@@ -1407,7 +1590,7 @@
         case "input_audio_buffer.committed":
           state.inputCommitDuringAssistantOutput = state.assistantOutputActive;
           state.inputCommitEchoText = state.inputCommitDuringAssistantOutput
-            ? (state.assistantDraft || state.lastAssistantText)
+            ? currentAssistantEchoText()
             : "";
           scheduleInputCommitFallback();
           break;
@@ -1446,6 +1629,7 @@
         case "response.done":
           state.responseActive = false;
           state.assistantOutputActive = false;
+          rememberAssistantEchoText();
           clearResponseWatchdog();
           els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
           flushPendingResponseCreate();
@@ -1453,6 +1637,7 @@
         case "response.output_audio.done":
         case "response.audio.done":
           state.assistantOutputActive = false;
+          rememberAssistantEchoText();
           els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
           break;
         case "error":
@@ -1552,6 +1737,7 @@
         if (!state.responseActive) return;
         state.responseActive = false;
         state.assistantOutputActive = false;
+        rememberAssistantEchoText();
         recordRealtimeEvent({ type: "vox.response_watchdog", message: "response.done timeout" });
         flushPendingResponseCreate();
       }, 30000);
@@ -1605,8 +1791,9 @@
     function shouldIgnoreInputTranscript(transcript) {
       const text = String(transcript || "").trim();
       if (!text) return true;
-      const assistantText = state.inputCommitEchoText || state.assistantDraft || state.lastAssistantText;
-      if ((state.assistantOutputActive || state.inputCommitDuringAssistantOutput) && isLikelyAssistantEcho(text, assistantText)) return true;
+      const echoWindowActive = state.assistantOutputActive ||
+        state.inputCommitDuringAssistantOutput;
+      if (echoWindowActive && isLikelyAssistantEcho(text, currentAssistantEchoText())) return true;
       return false;
     }
 
@@ -1614,9 +1801,31 @@
       const input = normalizeSpeechText(inputValue);
       const assistant = normalizeSpeechText(assistantValue);
       if (!input || !assistant) return false;
-      const minLength = hasCompactSpeechScript(input) ? 5 : 12;
+      const minLength = hasCompactSpeechScript(input) ? 5 : 8;
       if (input.length < minLength) return false;
-      return assistant === input || assistant.startsWith(input);
+      const assistantLength = hasCompactSpeechScript(assistant) ? 8 : 24;
+      return assistant === input ||
+        assistant.startsWith(input) ||
+        (assistant.length >= assistantLength && input.startsWith(assistant) && isShortSpeechArtifact(input.slice(assistant.length)));
+    }
+
+    function isShortSpeechArtifact(value) {
+      const artifact = normalizeSpeechText(value);
+      if (!artifact) return true;
+      return artifact.length <= 8 && artifact.trim().split(/\s+/).length <= 2;
+    }
+
+    function currentAssistantEchoText() {
+      return state.inputCommitEchoText ||
+        state.assistantDraft ||
+        state.assistantEchoText ||
+        state.lastAssistantText;
+    }
+
+    function rememberAssistantEchoText() {
+      const text = currentAssistantEchoText();
+      if (!String(text || "").trim()) return;
+      state.assistantEchoText = text;
     }
 
     function hasCompactSpeechScript(value) {
@@ -1633,13 +1842,16 @@
 
     function updateAssistantDraft(delta) {
       state.assistantDraft += delta;
+      state.assistantEchoText = state.assistantDraft;
       const draftIndex = state.assistantDraftIndex;
       const draftTurn = Number.isInteger(draftIndex) ? state.turns[draftIndex] : null;
       if (draftTurn?.role === "assistant" && draftTurn.draft) {
         draftTurn.text = state.assistantDraft;
+        draftTurn.zh = "";
+        draftTurn.zhStatus = "";
       } else {
         state.assistantDraftIndex = state.turns.length;
-        state.turns.push({ role: "assistant", text: state.assistantDraft, draft: true, ts: Date.now() });
+        state.turns.push(createTurn("assistant", state.assistantDraft, { draft: true }));
       }
       renderTurns();
     }
@@ -1663,19 +1875,137 @@
         draftTurn.text = clean;
         delete draftTurn.draft;
         if (!draftTurn.ts) draftTurn.ts = Date.now();
+        requestAssistantSubtitle(draftTurn);
       } else {
-        state.turns.push({ role: "assistant", text: clean, ts: Date.now() });
+        requestAssistantSubtitle(addTurn("assistant", clean, { render: false }));
       }
       state.lastAssistantText = clean;
+      state.assistantEchoText = clean;
+      rememberAssistantEchoText();
       state.assistantDraft = "";
       state.assistantDraftIndex = null;
       renderTurns();
     }
 
-    function addTurn(role, text) {
+    function addTurn(role, text, opts = {}) {
       if (!text) return;
-      state.turns.push({ role, text, ts: Date.now() });
+      const turn = createTurn(role, text, opts);
+      state.turns.push(turn);
+      if (opts.render !== false) renderTurns();
+      return turn;
+    }
+
+    function createTurn(role, text, opts = {}) {
+      return {
+        id: opts.id || `turn-${state.nextTurnId++}`,
+        role,
+        text,
+        zh: opts.zh || "",
+        zhStatus: opts.zhStatus || "",
+        zhRequestedAt: opts.zhRequestedAt || 0,
+        zhAttempts: opts.zhAttempts || 0,
+        zhError: opts.zhError || "",
+        draft: opts.draft || undefined,
+        preview: opts.preview || undefined,
+        ts: opts.ts || Date.now()
+      };
+    }
+
+    async function requestAssistantSubtitle(turn) {
+      if (!turn || turn.role !== "assistant" || turn.draft) return;
+      if (!state.showChineseSubtitles) return;
+      const sourceText = String(turn.text || "").trim();
+      if (!sourceText) return;
+      const now = Date.now();
+      if (turn.zhStatus === "pending" && now - (turn.zhRequestedAt || 0) < SUBTITLE_RETRY_AFTER_MS) return;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), SUBTITLE_REQUEST_TIMEOUT_MS);
+      const attempt = (turn.zhAttempts || 0) + 1;
+      turn.zh = "";
+      turn.zhStatus = "pending";
+      turn.zhRequestedAt = now;
+      turn.zhAttempts = attempt;
+      turn.zhError = "";
       renderTurns();
+      try {
+        const resp = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ text: sourceText, target_language: "zh-Hans" }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        const payload = await resp.json().catch((jsonError) => {
+          if (jsonError?.name === "AbortError" || controller.signal.aborted) throw jsonError;
+          return {};
+        });
+        if (!resp.ok || !payload.zh) throw new Error(payload.error || `translate HTTP ${resp.status}`);
+        const current = state.turns.find((candidate) => candidate.id === turn.id);
+        if (!current || current.role !== "assistant" || current.text !== sourceText) return;
+        current.zh = payload.zh;
+        current.zhStatus = "ready";
+        current.zhRequestedAt = 0;
+        current.zhAttempts = 0;
+        current.zhError = "";
+      } catch (error) {
+        const current = state.turns.find((candidate) => candidate.id === turn.id);
+        if (!current || current.role !== "assistant" || current.text !== sourceText) return;
+        const aborted = error?.name === "AbortError" || controller.signal.aborted;
+        current.zh = "";
+        current.zhRequestedAt = 0;
+        current.zhError = aborted ? "timeout" : (error?.message || "translation_failed");
+        if (aborted && attempt < SUBTITLE_MAX_TRIES) {
+          current.zhStatus = "pending";
+          scheduleSubtitleRetry(1000);
+        } else {
+          current.zhStatus = "error";
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        renderSubtitleControls();
+        renderTurns();
+      }
+    }
+
+    function scheduleSubtitleRetry(delayMs = 1000) {
+      if (state.subtitleRetryTimer) return;
+      state.subtitleRetryTimer = setTimeout(() => {
+        state.subtitleRetryTimer = null;
+        if (!state.showChineseSubtitles) return;
+        if (state.subtitleBackfillRunning) {
+          scheduleSubtitleRetry(delayMs);
+          return;
+        }
+        requestMissingAssistantSubtitles();
+      }, delayMs);
+    }
+
+    async function requestMissingAssistantSubtitles() {
+      if (state.subtitleBackfillRunning) return;
+      state.subtitleBackfillRunning = true;
+      try {
+        for (const turn of state.turns) {
+          if (!state.showChineseSubtitles) break;
+          const pendingIsFresh = turn.zhStatus === "pending" && Date.now() - (turn.zhRequestedAt || 0) < SUBTITLE_RETRY_AFTER_MS;
+          if (turn.role !== "assistant" || turn.draft || turn.zh || pendingIsFresh) continue;
+          await requestAssistantSubtitle(turn);
+        }
+      } finally {
+        state.subtitleBackfillRunning = false;
+      }
+    }
+
+    function readSubtitlePreference() {
+      try {
+        const value = localStorage.getItem(SUBTITLE_PREF_KEY);
+        return value == null ? true : value !== "0";
+      } catch {
+        return true;
+      }
+    }
+
+    function writeSubtitlePreference(value) {
+      try { localStorage.setItem(SUBTITLE_PREF_KEY, value ? "1" : "0"); } catch {}
     }
 
     function renderTurns() {
@@ -1696,10 +2026,14 @@
         const current = activeTurn ? " current" : "";
         const baseWho = turn.role === "user" ? (turn.preview ? "Learner" : "You") : turn.role === "assistant" ? "Vox" : "System";
         const who = turn.preview ? `${baseWho} · Preview` : baseWho;
+        const subtitle = subtitleMarkup(turn);
+        const contentSize = `${turn.text || ""} ${turn.zh || ""}`.length;
+        const lengthClass = contentSize > 260 ? " longer" : contentSize > 130 ? " long" : "";
         return `
-          <article class="turn ${role}${preview}${current}">
+          <article class="turn ${role}${preview}${current}${lengthClass}" data-turn-id="${escapeHtml(turn.id || `preview-${index}`)}" data-role="${role}">
             <div class="who">${escapeHtml(who)}</div>
             <p class="text">${escapeHtml(turn.text)}</p>
+            ${subtitle}
           </article>
         `;
       }).join("");
@@ -1707,6 +2041,30 @@
         const scroller = els.turns.closest(".transcript");
         scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
       });
+    }
+
+    function subtitleMarkup(turn) {
+      if (!state.showChineseSubtitles || turn.role !== "assistant") return "";
+      const text = turn.zh || (turn.zhStatus === "pending" ? "中文字幕生成中…" : turn.zhStatus === "error" ? "中文字幕暂不可用" : "");
+      if (!text) return "";
+      const statusClass = turn.zhStatus === "pending" ? " pending" : turn.zhStatus === "error" ? " error" : "";
+      return `<p class="zh-subtitle${statusClass}" data-subtitle-role="assistant" data-subtitle-status="${escapeHtml(turn.zhStatus || "")}">${escapeHtml(text)}</p>`;
+    }
+
+    function renderSubtitleControls() {
+      els.subtitleToggle.setAttribute("aria-pressed", String(state.showChineseSubtitles));
+      els.subtitleToggle.querySelector("span").textContent = state.showChineseSubtitles ? "中文字幕开" : "中文字幕关";
+      const assistantTurns = state.turns.filter((turn) => turn.role === "assistant" && turn.text && !turn.draft);
+      const ready = assistantTurns.filter((turn) => turn.zh).length;
+      if (!state.showChineseSubtitles) {
+        els.subtitleStatus.textContent = "Chinese subtitles hidden";
+      } else if (assistantTurns.some((turn) => turn.zhStatus === "error")) {
+        els.subtitleStatus.textContent = "Vox subtitles need retry";
+      } else if (assistantTurns.length && ready < assistantTurns.length) {
+        els.subtitleStatus.textContent = "Preparing Vox subtitles";
+      } else {
+        els.subtitleStatus.textContent = "Vox English shows Chinese subtitle";
+      }
     }
 
     function renderAuth() {
@@ -1720,6 +2078,7 @@
       els.signOutButton.hidden = !signedIn || state.user.provider === "dev";
       els.callButton.disabled = !signedIn || state.phase === "signed_out" || state.phase === "booting";
       els.localDevButton.hidden = state.config?.auth?.required !== false;
+      renderSubtitleControls();
       renderPhase();
     }
 
