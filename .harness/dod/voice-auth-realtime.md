@@ -46,3 +46,11 @@ TF impact: not-needed — follow-up hardening for pending recording ownership, r
 TF impact: not-needed — root URL now redirects to the already documented Voice Course app so shared `https://vox.exp.game/` opens the current no-login prototype directly.
 
 TF impact: not-needed — restores the original Vox voice-course visual shell for the already documented no-login Realtime prototype without changing the published product promise.
+
+TF impact: not-needed — final review cleanup only scopes the preview shell and copy labels; the no-login Realtime and recording behavior remains unchanged.
+
+TF impact: not-needed — push-review cleanup only delays the public visual shell until no-login config is known; published Vox behavior remains the same.
+
+TF impact: not-needed — final push-review cleanup limits transcript re-rendering to shell-mode changes and preserves the same public no-login voice UI.
+
+TF impact: not-needed — last review nits only remove redundant guards and clarify startup render order; user-visible Realtime behavior is unchanged.

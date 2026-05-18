@@ -772,7 +772,7 @@
     }
   </style>
 </head>
-<body class="public-learner-shell">
+<body>
   <div class="shell" aria-label="Vox voice tutor">
     <aside class="side">
       <div class="brand">
@@ -857,6 +857,7 @@
       sessionLine: document.getElementById("sessionLine")
     };
 
+    // Public launch preview: this is static English practice copy, not session history.
     const previewTurns = [
       { role: "user", text: "I want to order coffee.", preview: true },
       { role: "assistant", text: "Good. You can say: \"Can I get a small latte?\"", preview: true },
@@ -894,7 +895,6 @@
       recordings: []
     };
 
-    renderTurns();
     init().catch((error) => showFatal(error.message || String(error)));
 
     els.googleButton.addEventListener("click", signInWithGoogle);
@@ -1013,9 +1013,10 @@
       state.recordingCapReached = false;
       state.assistantDraft = "";
       state.assistantDraftIndex = null;
-      setPhase("connecting");
+      // Seed the transcript before flipping the call state so the learner shell never flashes empty.
       state.turns = [];
       addTurn("system", "Session started. Vox will begin conservatively.");
+      setPhase("connecting");
 
       try {
         state.stream = await navigator.mediaDevices.getUserMedia({
@@ -1455,11 +1456,11 @@
     }
 
     function renderTurns() {
+      const publicShell = document.body.classList.contains("public-learner-shell");
       const activePhase = state.phase === "connecting" ||
         state.phase === "live" ||
-        state.phase === "ended" ||
         state.phase === "error";
-      const showPreview = !state.turns.length && !state.sessionId && !activePhase;
+      const showPreview = publicShell && !state.turns.length && !state.sessionId && !activePhase;
       const displayTurns = showPreview ? previewTurns : state.turns;
       const lastIndex = displayTurns.length - 1;
       els.turns.innerHTML = displayTurns.map((turn, index) => {
@@ -1470,11 +1471,10 @@
           (state.phase === "live" || state.phase === "connecting") &&
           index === lastIndex;
         const current = activeTurn ? " current" : "";
-        const ariaHidden = turn.preview ? ` aria-hidden="true"` : "";
-        const baseWho = turn.role === "user" ? "Learner" : turn.role === "assistant" ? "Vox" : "System";
+        const baseWho = turn.role === "user" ? (turn.preview ? "Learner" : "You") : turn.role === "assistant" ? "Vox" : "System";
         const who = turn.preview ? `${baseWho} · Preview` : baseWho;
         return `
-          <article class="turn ${role}${preview}${current}"${ariaHidden}>
+          <article class="turn ${role}${preview}${current}">
             <div class="who">${escapeHtml(who)}</div>
             <p class="text">${escapeHtml(turn.text)}</p>
           </article>
@@ -1488,9 +1488,10 @@
 
     function renderAuth() {
       const signedIn = Boolean(state.user);
-      const configLoaded = Boolean(state.config);
-      const publicLaunch = state.config?.auth?.required === false;
-      document.body.classList.toggle("public-learner-shell", !configLoaded || publicLaunch || !signedIn);
+      const shouldUsePublicShell = state.config?.auth?.required === false;
+      const publicShellChanged = document.body.classList.contains("public-learner-shell") !== shouldUsePublicShell;
+      document.body.classList.toggle("public-learner-shell", shouldUsePublicShell);
+      if (publicShellChanged) renderTurns();
       els.loginPanel.hidden = signedIn;
       els.accountLabel.textContent = signedIn ? (state.user.email || state.user.name || "Signed in") : "Signed out";
       els.signOutButton.hidden = !signedIn || state.user.provider === "dev";
