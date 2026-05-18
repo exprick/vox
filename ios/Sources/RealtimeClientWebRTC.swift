@@ -33,14 +33,12 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     @Published var dataChannelOpen: Bool = false
     @Published var iceConnectionState: String = "new"
 
-    private let model = "gpt-realtime"
-
     private var bridgeBase: String {
         if let override = UserDefaults.standard.string(forKey: "bridgeBase") { return override }
         #if targetEnvironment(simulator)
-        return "http://127.0.0.1:3205"
+        return "http://127.0.0.1:3203"
         #else
-        return "http://127.0.0.1:3205"
+        return "http://127.0.0.1:3203"
         #endif
     }
 
@@ -187,9 +185,11 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
                 NSLocalizedDescriptionKey: "bridge /voice/session HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1)",
             ])
         }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let secret = json["client_secret"] as? [String: Any],
-              let value = secret["value"] as? String else {
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let directValue = json?["value"] as? String
+        let secret = json?["client_secret"] as? [String: Any]
+        let nestedValue = secret?["value"] as? String
+        guard let value = directValue ?? nestedValue else {
             throw NSError(domain: "Vox", code: 2, userInfo: [
                 NSLocalizedDescriptionKey: "client_secret missing in bridge response",
             ])
@@ -264,7 +264,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     }
 
     private func postOffer(sdp: String, ephemeralKey: String) async throws -> String {
-        let url = URL(string: "https://api.openai.com/v1/realtime?model=\(model)")!
+        let url = URL(string: "https://api.openai.com/v1/realtime/calls")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/sdp", forHTTPHeaderField: "Content-Type")
@@ -307,15 +307,15 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             isAssistantSpeaking = true
             assistantBuffer = ""
             lastAssistantText = ""
-        case "response.audio_transcript.delta":
+        case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 assistantBuffer += delta
                 lastAssistantText = assistantBuffer
             }
-        case "response.audio_transcript.done":
+        case "response.audio_transcript.done", "response.output_audio_transcript.done":
             // Final assistant text — push to bridge so get_app_state can see it.
             postTranscriptToBridge(role: "assistant", text: assistantBuffer)
-        case "response.audio.done", "response.done":
+        case "response.audio.done", "response.output_audio.done", "response.done":
             isAssistantSpeaking = false
         case "conversation.item.input_audio_transcription.completed":
             if let t = json["transcript"] as? String {

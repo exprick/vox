@@ -38,38 +38,59 @@ You have function calls for:
 
 USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. If they ask what you remember, call list_memory. If they want a drill / practice / quiz, call generate_drill. If they want a code change, call dispatch_codex (acknowledge by voice while it runs). If they ask "is codex done", call get_codex_tasks. Do not say "I cannot see" or "I don't have access" — there is almost always a tool for it.`;
   const instructions = baseInstructions + TOOL_HINT;
-  const body = {
-    model: opts.model || 'gpt-realtime',
-    voice: opts.voice || 'alloy',
-    modalities: ['audio', 'text'],
+  const model = process.env.VOX_REALTIME_MODEL || 'gpt-realtime';
+  const voice = process.env.VOX_REALTIME_VOICE || 'marin';
+  const transcriptionModel = process.env.VOX_TRANSCRIPTION_MODEL || 'gpt-4o-mini-transcribe';
+  const transcription = { model: transcriptionModel };
+  const transcriptionLanguage = process.env.VOX_TRANSCRIPTION_LANGUAGE?.trim();
+  if (transcriptionLanguage) transcription.language = transcriptionLanguage;
+  const session = {
+    type: 'realtime',
+    model,
     instructions,
-    input_audio_format: 'pcm16',
-    output_audio_format: 'pcm16',
-    input_audio_transcription: { model: 'whisper-1' },
+    audio: {
+      input: {
+        transcription,
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
+          create_response: true,
+          interrupt_response: true,
+        },
+      },
+      output: {
+        voice,
+      },
+    },
     tools: TOOL_DEFINITIONS,
     tool_choice: 'auto',
-    turn_detection: {
-      type: 'server_vad',
-      threshold: 0.5,
-      prefix_padding_ms: 300,
-      silence_duration_ms: 500,
-      create_response: true,
-      interrupt_response: true,
-    },
   };
-  const resp = await fetch('https://api.openai.com/v1/realtime/sessions', {
+  const resp = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...(opts.user?.safetyIdentifier ? { 'OpenAI-Safety-Identifier': opts.user.safetyIdentifier } : {}),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ session }),
   });
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`realtime session create failed: ${resp.status} ${text}`);
+    throw new Error(`realtime client secret create failed: ${resp.status} ${text}`);
   }
-  return resp.json();
+  const data = await resp.json();
+  const value = data.value || data.client_secret?.value;
+  return {
+    ...data,
+    client_secret: {
+      ...(data.client_secret || {}),
+      value,
+    },
+    model,
+    voice,
+  };
 }
 
 export async function transcribeWavBuffer(wavBytes, model = 'whisper-1') {

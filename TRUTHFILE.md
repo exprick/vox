@@ -26,6 +26,8 @@ The first prototype should not try to solve every long-term tutoring problem. It
 
 Vox ships as a Web App first. A learner signs in with Google so Vox can keep that learner's memory separate from everyone else's, and early access stays invite-only before a live voice session starts.
 
+Current deployment step: the public Web App may run without login while the team validates the live Realtime voice and recording pipeline. This is a temporary launch mode for plumbing proof, not the target privacy boundary. Before broader learner use, restore Google login, backend allowlist enforcement, and per-learner storage isolation.
+
 Google-only is acceptable for the Web App MVP. If native iOS returns, add Sign in with Apple or an equivalent App Store-compliant login option before App Store distribution.
 
 Supabase is the first auth and data boundary: Supabase Auth handles Google OAuth, Supabase Postgres stores learner profiles and session summaries, and RLS must prevent one user from reading or writing another user's data.
@@ -93,6 +95,7 @@ The first usable demo passes when:
 - Vox changes the next turn's English difficulty and Chinese support based on that signal.
 - Vox saves a short learner profile after the session.
 - A later session starts with that saved profile and feels different from a brand-new user session.
+- The app only tells the learner a recording was saved after the backend accepts it; if upload cannot finish, the session stops clearly and asks the learner to sign in or retry.
 
 The product test is: at this level, can the learner follow Vox without constantly stopping the conversation?
 

@@ -19,7 +19,7 @@ final class PollClient {
 
     private var bridgeBase: String {
         if let v = UserDefaults.standard.string(forKey: "bridgeBase") { return v }
-        return "http://127.0.0.1:3205"
+        return "http://127.0.0.1:3203"
     }
 
     private var pollTask: Task<Void, Never>?

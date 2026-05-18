@@ -3,20 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Vox Voice Course</title>
+  <title>Vox Voice</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
-      --bg: #f3dfca;
-      --bg-deep: #d2a18f;
-      --ink: #27140f;
-      --ink-soft: rgba(39, 20, 15, 0.62);
-      --ink-mute: rgba(39, 20, 15, 0.38);
-      --accent: #b64235;
-      --accent-soft: #df826f;
-      --paper: rgba(255, 246, 236, 0.62);
-      --paper-strong: rgba(255, 246, 236, 0.84);
-      --line: rgba(39, 20, 15, 0.12);
-      --serif: Georgia, "Times New Roman", "Songti SC", serif;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #121826;
+      --muted: #657186;
+      --line: #dfe5ef;
+      --primary: #246bfe;
+      --primary-dark: #164cc8;
+      --teal: #0f9f8f;
+      --coral: #d94f45;
+      --soft-blue: #e8f0ff;
+      --soft-teal: #e6f7f4;
+      --soft-red: #fdecea;
+      --shadow: 0 18px 50px rgba(25, 36, 58, 0.12);
       --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
     }
 
@@ -25,749 +28,1254 @@
     body {
       margin: 0;
       font-family: var(--sans);
-      background:
-        radial-gradient(900px 620px at 50% -12%, #f9eadb 0%, rgba(249, 234, 219, 0) 64%),
-        radial-gradient(700px 520px at 55% 112%, rgba(180, 66, 53, 0.22) 0%, rgba(180, 66, 53, 0) 72%),
-        #1a1410;
+      background: var(--bg);
       color: var(--ink);
-      display: grid;
-      place-items: center;
       min-height: 100vh;
       min-height: 100dvh;
-      padding: 22px;
-      overflow: hidden;
+      letter-spacing: 0;
     }
 
     button {
       font: inherit;
-      color: inherit;
       -webkit-tap-highlight-color: transparent;
     }
 
-    .phone {
-      position: relative;
-      width: min(100%, 430px);
-      height: min(900px, calc(100vh - 44px));
-      min-height: 720px;
-      border-radius: 46px;
-      overflow: hidden;
-      background:
-        radial-gradient(120% 78% at 50% 0%, #edc7aa 0%, rgba(237, 199, 170, 0) 62%),
-        radial-gradient(112% 68% at 50% 104%, rgba(180, 66, 53, 0.20) 0%, rgba(180, 66, 53, 0) 66%),
-        linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
-      box-shadow: 0 34px 90px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(255, 255, 255, 0.16);
-      isolation: isolate;
+    .shell {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 310px 1fr;
+      gap: 0;
+      background: var(--panel);
+      box-shadow: var(--shadow);
     }
 
-    .phone::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background:
-        radial-gradient(72% 44% at 22% 22%, rgba(255, 242, 226, 0.48), transparent 64%),
-        linear-gradient(90deg, rgba(255,255,255,0.08), transparent 42%, rgba(44,18,12,0.04));
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    .app {
-      position: relative;
-      z-index: 1;
+    .side {
+      border-right: 1px solid var(--line);
+      padding: 28px;
       display: flex;
       flex-direction: column;
-      height: 100%;
-      padding: max(30px, env(safe-area-inset-top)) 24px max(18px, env(safe-area-inset-bottom));
-    }
-
-    .hdr {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 4px 2px 8px;
-      min-height: 58px;
+      gap: 22px;
+      background: #fbfcff;
     }
 
     .brand {
-      font: italic 30px/1 var(--serif);
-      letter-spacing: 0;
-      color: var(--ink);
-      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
     }
 
-    .level {
+    .brand h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .badge {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
-      border: 0;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 10px;
       border-radius: 999px;
-      background: rgba(255, 246, 236, 0.36);
-      color: var(--ink-soft);
-      padding: 9px 12px;
+      background: var(--soft-blue);
+      color: var(--primary-dark);
       font-size: 12px;
-      font-weight: 650;
+      font-weight: 750;
       letter-spacing: 0.08em;
+      text-transform: uppercase;
       white-space: nowrap;
     }
 
-    .level i,
-    .zh-toggle i {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 0 rgba(180, 66, 53, 0.38);
+    .badge.live {
+      background: var(--soft-teal);
+      color: #087669;
     }
 
-    .session-meta {
-      margin-left: auto;
-      color: var(--ink-soft);
+    .badge.error {
+      background: var(--soft-red);
+      color: #a73730;
+    }
+
+    .profile {
+      display: grid;
+      gap: 8px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .profile small,
+    .meta small {
+      color: var(--muted);
       font-size: 12px;
-      font-weight: 650;
-      letter-spacing: 0.18em;
-      white-space: nowrap;
+      line-height: 1.35;
     }
 
-    .transcript-wrap {
-      position: relative;
-      flex: 1;
-      min-height: 0;
-      margin: 6px -24px 0;
-      overflow: hidden;
+    .profile strong {
+      font-size: 15px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .side-actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .secondary-btn,
+    .ghost-btn,
+    .icon-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .secondary-btn {
+      min-height: 42px;
+      padding: 0 14px;
+      font-weight: 650;
+    }
+
+    .ghost-btn {
+      min-height: 38px;
+      padding: 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    .topbar {
+      min-height: 74px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 26px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .topic {
+      min-width: 0;
+    }
+
+    .topic h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .topic p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
     }
 
     .transcript {
-      height: 100%;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding: 44px 28px 18px;
-      scrollbar-width: none;
-      mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
-      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 42px, #000 calc(100% - 12px), transparent 100%);
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 28px 26px 18px;
+      background:
+        linear-gradient(180deg, rgba(232, 240, 255, 0.48), rgba(255,255,255,0) 260px),
+        #fff;
     }
-    .transcript::-webkit-scrollbar { display: none; }
 
     .turns {
-      min-height: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 23px;
+      display: grid;
+      gap: 14px;
+      max-width: 760px;
+      margin: 0 auto;
     }
 
     .turn {
       display: grid;
-      gap: 7px;
+      gap: 5px;
+      padding: 13px 15px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .turn.user {
+      margin-left: 54px;
+      border-color: rgba(15, 159, 143, 0.28);
+      background: #fbfffe;
+    }
+
+    .turn.assistant {
+      margin-right: 54px;
+      border-color: rgba(36, 107, 254, 0.24);
+      background: #fbfdff;
+    }
+
+    .turn.system {
+      border-style: dashed;
+      background: #fbfcff;
+      color: var(--muted);
     }
 
     .who {
-      font: italic 14px/1.1 var(--serif);
-      color: var(--ink-soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
 
-    .en {
+    .text {
       margin: 0;
-      font: 25px/1.17 var(--serif);
-      color: rgba(39, 20, 15, 0.58);
-      letter-spacing: 0;
-      text-wrap: pretty;
-    }
-
-    .zh {
-      margin: 0;
-      max-height: 90px;
-      overflow: hidden;
-      color: var(--ink-mute);
-      font-size: 14px;
-      line-height: 1.55;
-      transition: opacity 180ms ease, max-height 240ms ease, margin 240ms ease;
-    }
-
-    .turn.current .en {
       color: var(--ink);
-      font-size: clamp(28px, 7vw, 33px);
+      font-size: 16px;
+      line-height: 1.48;
+      overflow-wrap: anywhere;
     }
 
-    .turn.current .zh {
-      color: rgba(39, 20, 15, 0.66);
-      font-size: 15px;
+    .controls {
+      border-top: 1px solid var(--line);
+      padding: 18px 26px max(18px, env(safe-area-inset-bottom));
+      background: #fff;
     }
 
-    .turn.learner .who { color: rgba(180, 66, 53, 0.64); }
-    .turn.learner .en {
-      font-style: italic;
-      color: rgba(180, 66, 53, 0.70);
-      font-size: 23px;
-    }
-    .turn.learner.current .en {
-      color: rgba(180, 66, 53, 0.90);
-      font-size: clamp(25px, 6.2vw, 30px);
+    .control-inner {
+      max-width: 760px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
     }
 
-    .hide-zh .zh {
-      max-height: 0;
-      opacity: 0;
-      margin: -7px 0 0;
-    }
-
-    .state {
-      min-height: 34px;
-      display: flex;
+    .primary-btn {
+      border: 0;
+      min-height: 58px;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 760;
+      cursor: pointer;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 10px;
-      color: var(--ink-soft);
-      font: italic 15px/1 var(--serif);
-      padding: 4px 0 0;
     }
 
-    .dots {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
+    .primary-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
     }
-    .dots b {
-      width: 6px;
-      height: 6px;
+
+    .primary-btn.live {
+      background: var(--coral);
+    }
+
+    .pulse {
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
-      background: var(--accent);
-      animation: breathe 1.35s ease-in-out infinite;
-    }
-    .dots b:nth-child(2) { animation-delay: 160ms; }
-    .dots b:nth-child(3) { animation-delay: 320ms; }
-
-    @keyframes breathe {
-      0%, 100% { opacity: 0.34; transform: scale(0.62); }
-      50% { opacity: 1; transform: scale(1.08); }
+      background: currentColor;
+      box-shadow: 0 0 0 0 rgba(255,255,255,0.42);
+      animation: pulse 1.5s ease-out infinite;
     }
 
-    .control-strip {
-      display: grid;
-      gap: 10px;
-      padding-top: 8px;
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.48); }
+      70% { box-shadow: 0 0 0 18px rgba(255,255,255,0); }
+      100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
     }
 
-    .utility {
+    .meta {
       display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
       align-items: center;
-      justify-content: space-between;
-      min-height: 38px;
+      min-width: 0;
     }
 
-    .zh-toggle,
-    .icon-btn {
-      border: 0;
-      background: transparent;
-      color: var(--ink-soft);
-      border-radius: 999px;
-      cursor: pointer;
-    }
-
-    .zh-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 9px;
-      padding: 8px 12px;
-      font-size: 14px;
-      font-weight: 650;
-    }
-
-    .zh-toggle[aria-pressed="false"] i {
-      background: rgba(39, 20, 15, 0.28);
-      box-shadow: none;
-    }
-
-    .icon-btn {
-      width: 40px;
-      height: 40px;
+    .login {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
       display: grid;
       place-items: center;
+      padding: 22px;
+      background: rgba(247, 248, 251, 0.92);
+      backdrop-filter: blur(18px);
     }
 
-    .icon-btn svg { display: block; }
+    .login[hidden] { display: none; }
 
-    .primary-row {
+    .login-card {
+      width: min(100%, 420px);
       display: grid;
-      grid-template-columns: 1fr 56px;
-      gap: 12px;
-      align-items: center;
+      gap: 18px;
+      padding: 26px;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
     }
 
-    .mic-btn,
-    .restart-btn {
-      border: 0;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .mic-btn {
-      min-width: 0;
-      height: 58px;
-      border-radius: 999px;
-      background: var(--ink);
-      color: #fff6ec;
-      gap: 10px;
-      font-size: 15px;
-      font-weight: 650;
-      letter-spacing: 0.02em;
-      box-shadow: 0 12px 32px rgba(39, 20, 15, 0.18);
-    }
-
-    .mic-btn.live {
-      background: var(--accent);
-      animation: micPulse 1.6s ease-out infinite;
-    }
-
-    @keyframes micPulse {
-      0% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0.30); }
-      72% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 18px rgba(180, 66, 53, 0); }
-      100% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0); }
-    }
-
-    .wave {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      height: 18px;
-    }
-    .wave i {
-      width: 3px;
-      border-radius: 3px;
-      background: currentColor;
-      animation: bar 880ms ease-in-out infinite;
-    }
-    .wave i:nth-child(1) { height: 7px; animation-delay: 0ms; }
-    .wave i:nth-child(2) { height: 13px; animation-delay: 90ms; }
-    .wave i:nth-child(3) { height: 18px; animation-delay: 180ms; }
-    .wave i:nth-child(4) { height: 11px; animation-delay: 270ms; }
-    .wave i:nth-child(5) { height: 8px; animation-delay: 360ms; }
-
-    @keyframes bar {
-      0%, 100% { transform: scaleY(0.48); }
-      50% { transform: scaleY(1); }
-    }
-
-    .restart-btn {
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background: rgba(255, 246, 236, 0.42);
-      color: var(--ink-soft);
-      border: 0.5px solid rgba(255,255,255,0.40);
-    }
-
-    .sheet-backdrop {
-      position: absolute;
-      inset: 0;
-      z-index: 8;
-      background: rgba(39, 20, 15, 0.10);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 180ms ease;
-    }
-
-    .sheet {
-      position: absolute;
-      z-index: 9;
-      left: 14px;
-      right: 14px;
-      bottom: 14px;
-      background: var(--paper-strong);
-      color: var(--ink);
-      border-radius: 28px;
-      padding: 18px;
-      transform: translateY(calc(100% + 18px));
-      transition: transform 260ms cubic-bezier(.2,.75,.2,1);
-      box-shadow: 0 24px 70px rgba(39, 20, 15, 0.24);
-      backdrop-filter: blur(24px) saturate(160%);
-      -webkit-backdrop-filter: blur(24px) saturate(160%);
-      border: 0.5px solid rgba(255,255,255,0.48);
-    }
-
-    .sheet.open { transform: translateY(0); }
-    .sheet-backdrop.open {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .sheet-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-
-    .sheet-title {
-      font: italic 21px/1.1 var(--serif);
+    .login-card h2 {
       margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
     }
 
-    .sheet-tabs {
+    .login-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .login-actions {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 7px;
-      padding: 4px;
-      border-radius: 16px;
-      background: rgba(39, 20, 15, 0.06);
-      margin-bottom: 15px;
+      gap: 10px;
     }
 
-    .sheet-tab {
-      border: 0;
-      border-radius: 12px;
-      padding: 9px 6px;
-      background: transparent;
-      color: var(--ink-soft);
-      font-size: 12px;
-      font-weight: 650;
-      cursor: pointer;
-    }
-
-    .sheet-tab.active {
-      background: rgba(255, 255, 255, 0.62);
-      color: var(--ink);
-      box-shadow: 0 1px 4px rgba(39, 20, 15, 0.08);
-    }
-
-    .setting-list {
-      display: grid;
-      gap: 0;
-    }
-
-    .setting {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 14px;
-      min-height: 44px;
-      border-top: 0.5px solid var(--line);
-      padding: 11px 0;
-    }
-
-    .setting span:first-child {
-      color: var(--ink-soft);
+    .error-text {
+      color: #a73730;
+      background: var(--soft-red);
+      border: 1px solid rgba(217, 79, 69, 0.22);
+      border-radius: 8px;
+      padding: 10px 12px;
       font-size: 13px;
-      white-space: nowrap;
+      line-height: 1.42;
+      overflow-wrap: anywhere;
     }
 
-    .setting span:last-child {
-      font: italic 16px/1.25 var(--serif);
-      text-align: right;
+    .recordings {
+      display: grid;
+      gap: 8px;
+      margin-top: auto;
     }
 
-    .close-sheet {
-      border: 0;
-      border-radius: 999px;
-      width: 34px;
-      height: 34px;
-      background: transparent;
-      color: var(--ink-soft);
-      cursor: pointer;
-      font-size: 20px;
+    .recordings h3 {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
 
-    @media (max-width: 520px) {
-      body {
-        padding: 0;
-        display: block;
-        overflow: hidden;
-        background: var(--bg);
-      }
-      .phone {
-        width: 100vw;
+    .recording-list {
+      display: grid;
+      gap: 8px;
+      max-height: 230px;
+      overflow: auto;
+    }
+
+    .recording {
+      display: grid;
+      gap: 3px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .recording strong {
+      color: var(--ink);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 780px) {
+      .shell {
+        display: flex;
+        flex-direction: column;
+        grid-template-columns: 1fr;
         height: 100vh;
         height: 100dvh;
         min-height: 0;
-        border-radius: 0;
+        overflow: hidden;
         box-shadow: none;
       }
-      .app {
-        padding-left: 22px;
-        padding-right: 22px;
-      }
-      .transcript-wrap { margin-left: -22px; margin-right: -22px; }
-      .transcript { padding-left: 26px; padding-right: 26px; }
-    }
 
-    @media (max-height: 760px) {
-      .phone { min-height: 0; }
-      .app { padding-top: 22px; }
-      .hdr { min-height: 50px; }
-      .transcript { padding-top: 24px; }
-      .turns { gap: 18px; }
-      .turn.current .en { font-size: 27px; }
-      .en { font-size: 23px; }
+      .side {
+        flex: 0 0 auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 16px 18px;
+        gap: 14px;
+      }
+
+      .brand h1 { font-size: 25px; }
+
+      .profile {
+        grid-template-columns: 1fr auto;
+        align-items: center;
+      }
+
+      .side-actions,
+      .recordings {
+        display: none;
+      }
+
+      .main,
+      .shell {
+        min-height: 0;
+      }
+
+      .main {
+        flex: 1 1 auto;
+      }
+
+      .topbar {
+        min-height: 64px;
+        padding: 14px 18px;
+      }
+
+      .transcript {
+        padding: 20px 18px 12px;
+      }
+
+      .turn.user,
+      .turn.assistant {
+        margin-left: 0;
+        margin-right: 0;
+      }
+
+      .controls {
+        padding: 14px 18px max(14px, env(safe-area-inset-bottom));
+      }
+
+      .control-inner {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <main class="phone" aria-label="Vox voice course web prototype">
-    <div class="app">
-      <header class="hdr">
-        <div class="brand">Vox</div>
-        <button class="level" type="button" id="levelButton"><i></i><span>初级+</span></button>
-        <div class="session-meta" id="sessionMeta">READY</div>
+  <div class="shell" aria-label="Vox voice tutor">
+    <aside class="side">
+      <div class="brand">
+        <h1>Vox</h1>
+        <span class="badge" id="statusBadge">Ready</span>
+      </div>
+
+      <div class="profile">
+        <small>Account</small>
+        <strong id="accountLabel">Checking...</strong>
+      </div>
+
+      <div class="side-actions">
+        <button class="secondary-btn" type="button" id="refreshRecordingsButton">Refresh recordings</button>
+        <button class="ghost-btn" type="button" id="signOutButton">Sign out</button>
+      </div>
+
+      <section class="recordings" aria-label="Recent recordings">
+        <h3>Recent recordings</h3>
+        <div class="recording-list" id="recordingList"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topic">
+          <h2>Live English practice</h2>
+          <p id="sessionLine">Conservative lane · short turns · Chinese rescue when needed</p>
+        </div>
+        <span class="badge" id="connectionBadge">Idle</span>
       </header>
 
-      <section class="transcript-wrap" aria-label="Conversation transcript">
-        <div class="transcript" id="transcript">
-          <div class="turns" id="turns"></div>
-        </div>
+      <section class="transcript" aria-label="Transcript">
+        <div class="turns" id="turns"></div>
       </section>
 
-      <div class="state" id="stateRow"></div>
+      <footer class="controls">
+        <div class="control-inner">
+          <button class="primary-btn" type="button" id="callButton" disabled>
+            <span>Start live voice</span>
+          </button>
+          <div class="meta">
+            <small id="recordingState">Recording starts with every session.</small>
+            <small id="transportState">WebRTC idle</small>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
 
-      <section class="control-strip" aria-label="Voice controls">
-        <div class="utility">
-          <button class="zh-toggle" type="button" id="zhToggle" aria-pressed="true"><i></i><span>中</span></button>
-          <button class="icon-btn" type="button" id="moreButton" aria-label="More settings">
-            <svg width="20" height="6" viewBox="0 0 20 6" aria-hidden="true">
-              <circle cx="3" cy="3" r="2.2" fill="currentColor"></circle>
-              <circle cx="10" cy="3" r="2.2" fill="currentColor"></circle>
-              <circle cx="17" cy="3" r="2.2" fill="currentColor"></circle>
-            </svg>
-          </button>
-        </div>
-        <div class="primary-row">
-          <button class="mic-btn" type="button" id="micButton"></button>
-          <button class="restart-btn" type="button" id="restartButton" aria-label="Restart">
-            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3M3.5 4.5v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-          </button>
-        </div>
-      </section>
+  <section class="login" id="loginPanel" aria-label="Login">
+    <div class="login-card">
+      <h2>Sign in to Vox</h2>
+      <p>Vox keeps each learner's practice history separate before a live session starts.</p>
+      <div id="loginError" class="error-text" hidden></div>
+      <div class="login-actions">
+        <button class="primary-btn" type="button" id="googleButton">Continue with Google</button>
+        <button class="secondary-btn" type="button" id="localDevButton" hidden>Continue locally</button>
+      </div>
     </div>
+  </section>
 
-    <div class="sheet-backdrop" id="sheetBackdrop"></div>
-    <aside class="sheet" id="settingsSheet" aria-label="Settings">
-      <div class="sheet-head">
-        <h2 class="sheet-title">Today</h2>
-        <button class="close-sheet" type="button" id="closeSheet" aria-label="Close">×</button>
-      </div>
-      <div class="sheet-tabs" role="tablist" aria-label="Settings sections">
-        <button class="sheet-tab active" type="button" data-panel="course">Course</button>
-        <button class="sheet-tab" type="button" data-panel="memory">Memory</button>
-        <button class="sheet-tab" type="button" data-panel="audio">Audio</button>
-      </div>
-      <div class="setting-list" id="settingsBody"></div>
-    </aside>
-  </main>
+  <audio id="remoteAudio" autoplay></audio>
 
   <script>
-    const script = [
-      { who: "learner", en: "I want to order coffee.", zh: "我想点咖啡。" },
-      { who: "vox", en: "Good. You can say: “Can I get a small latte?”", zh: "很好。可以这样说：“Can I get a small latte?”" },
-      { who: "vox", en: "Now try it once. Keep it short and natural.", zh: "现在你试一次。短一点，自然一点。" },
-      { who: "learner", en: "Can I get a small latte?", zh: "我可以要一杯小杯拿铁吗？" },
-      { who: "vox", en: "Almost. Make “can” softer, like asking a favor.", zh: "差不多。把 “can” 说轻一点，像是请人帮忙。" },
-      { who: "learner", en: "Can I get a small latte, please?", zh: "请给我一杯小杯拿铁。" },
-      { who: "vox", en: "That's it. Warm and easy. One more time.", zh: "对了。温和、自然。再来一次。" }
-    ];
-
-    const settingsPanels = {
-      course: [
-        ["Level", "初级+ · A2"],
-        ["Focus", "Ordering coffee"],
-        ["Pace", "Short turns"],
-        ["Mode", "Voice first"]
-      ],
-      memory: [
-        ["This week", "Ordering · small talk"],
-        ["Repeated", "articles, prepositions"],
-        ["Preference", "Example before drill"],
-        ["Chinese", "Tiny toggle"]
-      ],
-      audio: [
-        ["Mic", "Ready"],
-        ["Vox", "Warm, short"],
-        ["Interrupt", "Allowed"],
-        ["Review", "Scroll transcript"]
-      ]
-    };
-
-    const el = {
+    const els = {
+      loginPanel: document.getElementById("loginPanel"),
+      loginError: document.getElementById("loginError"),
+      googleButton: document.getElementById("googleButton"),
+      localDevButton: document.getElementById("localDevButton"),
+      signOutButton: document.getElementById("signOutButton"),
+      refreshRecordingsButton: document.getElementById("refreshRecordingsButton"),
+      accountLabel: document.getElementById("accountLabel"),
+      statusBadge: document.getElementById("statusBadge"),
+      connectionBadge: document.getElementById("connectionBadge"),
+      callButton: document.getElementById("callButton"),
       turns: document.getElementById("turns"),
-      transcript: document.getElementById("transcript"),
-      zhToggle: document.getElementById("zhToggle"),
-      micButton: document.getElementById("micButton"),
-      restartButton: document.getElementById("restartButton"),
-      stateRow: document.getElementById("stateRow"),
-      sessionMeta: document.getElementById("sessionMeta"),
-      moreButton: document.getElementById("moreButton"),
-      levelButton: document.getElementById("levelButton"),
-      sheet: document.getElementById("settingsSheet"),
-      sheetBackdrop: document.getElementById("sheetBackdrop"),
-      closeSheet: document.getElementById("closeSheet"),
-      settingsBody: document.getElementById("settingsBody")
+      remoteAudio: document.getElementById("remoteAudio"),
+      recordingState: document.getElementById("recordingState"),
+      transportState: document.getElementById("transportState"),
+      recordingList: document.getElementById("recordingList"),
+      sessionLine: document.getElementById("sessionLine")
     };
 
-    let showChinese = true;
-    let shown = 2;
-    let running = false;
-    let phase = "idle";
-    let timer = null;
-    let sticky = true;
-    let panel = "course";
+    const state = {
+      config: null,
+      supabase: null,
+      accessToken: "",
+      user: null,
+      phase: "booting",
+      pc: null,
+      dc: null,
+      stream: null,
+      remoteStream: null,
+      audioContext: null,
+      recordDestination: null,
+      micSource: null,
+      remoteSource: null,
+      recorder: null,
+      chunks: [],
+      recordedBytes: 0,
+      recordingCapReached: false,
+      sessionId: "",
+      startedAt: "",
+      startedMs: 0,
+      turns: [],
+      assistantDraft: "",
+      assistantDraftIndex: null,
+      pendingRecording: null,
+      authExpiredHandling: false,
+      stoppingCall: false,
+      stopCallPromise: null,
+      recordings: []
+    };
 
-    function nearBottom() {
-      return el.transcript.scrollHeight - el.transcript.scrollTop - el.transcript.clientHeight < 42;
+    init().catch((error) => showFatal(error.message || String(error)));
+
+    els.googleButton.addEventListener("click", signInWithGoogle);
+    els.localDevButton.addEventListener("click", async () => {
+      state.user = { email: "dev@local.vox", name: "Local Vox Dev", provider: "dev" };
+      state.accessToken = "";
+      setPhase("idle");
+      renderAuth();
+      await refreshRecordings();
+    });
+    els.signOutButton.addEventListener("click", signOut);
+    els.refreshRecordingsButton.addEventListener("click", refreshRecordings);
+    els.callButton.addEventListener("click", () => {
+      if (state.phase === "live" || state.phase === "connecting") stopCall();
+      else startCall();
+    });
+
+    async function init() {
+      const resp = await fetch("/api/config", { cache: "no-store" });
+      if (!resp.ok) throw new Error(`config HTTP ${resp.status}`);
+      state.config = await resp.json();
+
+      if (!state.config.auth.required) {
+        els.localDevButton.hidden = false;
+        els.googleButton.hidden = true;
+        state.user = { email: "dev@local.vox", name: "Local Vox Dev", provider: "dev" };
+        setPhase("idle");
+        renderAuth();
+        await refreshRecordings();
+        return;
+      }
+
+      if (!state.config.auth.configured) {
+        showFatal("Supabase is not configured for this deployment.");
+        return;
+      }
+
+      if (!window.supabase?.createClient) {
+        showFatal("Supabase client failed to load.");
+        return;
+      }
+
+      state.supabase = window.supabase.createClient(
+        state.config.auth.supabaseUrl,
+        state.config.auth.supabaseAnonKey
+      );
+      const { data } = await state.supabase.auth.getSession();
+      applySupabaseSession(data.session);
+      state.supabase.auth.onAuthStateChange(async (_event, session) => {
+        applySupabaseSession(session);
+        renderAuth();
+        if (session) {
+          await flushPendingRecording();
+          await refreshRecordings();
+        } else {
+          state.recordings = [];
+          renderRecordings();
+        }
+      });
+      setPhase(state.user ? "idle" : "signed_out");
+      renderAuth();
+      if (state.user) {
+        await flushPendingRecording();
+        await refreshRecordings();
+      }
     }
 
-    function scrollToBottom() {
-      if (!sticky) return;
-      el.transcript.scrollTo({ top: el.transcript.scrollHeight, behavior: "smooth" });
+    async function signInWithGoogle() {
+      if (!state.supabase) return;
+      clearError();
+      const redirectTo = `${location.origin}${location.pathname}`;
+      const { error } = await state.supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo }
+      });
+      if (error) showError(error.message);
+    }
+
+    async function signOut() {
+      if (state.phase === "live" || state.phase === "connecting") await stopCall();
+      if (state.supabase) await state.supabase.auth.signOut();
+      state.user = null;
+      state.accessToken = "";
+      state.recordings = [];
+      state.pendingRecording = null;
+      setPhase("signed_out");
+      renderAuth();
+      renderRecordings();
+    }
+
+    function applySupabaseSession(session) {
+      const previousUserId = state.user?.id || state.user?.email || "";
+      state.accessToken = session?.access_token || "";
+      const supaUser = session?.user;
+      state.user = supaUser ? {
+        id: supaUser.id,
+        email: supaUser.email,
+        name: supaUser.user_metadata?.full_name || supaUser.user_metadata?.name || supaUser.email,
+        provider: "supabase"
+      } : null;
+      const nextUserId = state.user?.id || state.user?.email || "";
+      if (state.pendingRecording && previousUserId && nextUserId && previousUserId !== nextUserId) {
+        state.pendingRecording = null;
+      }
+      if (state.user) state.authExpiredHandling = false;
+    }
+
+    async function startCall() {
+      if (!state.user) return;
+      clearError();
+      setPhase("connecting");
+      state.sessionId = crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`;
+      state.startedAt = new Date().toISOString();
+      state.startedMs = Date.now();
+      state.chunks = [];
+      state.recordedBytes = 0;
+      state.recordingCapReached = false;
+      state.assistantDraft = "";
+      state.assistantDraftIndex = null;
+      state.turns = [];
+      addTurn("system", "Session started. Vox will begin conservatively.");
+
+      try {
+        state.stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+        startRecorder(state.stream);
+
+        state.pc = new RTCPeerConnection();
+        state.pc.ontrack = (event) => {
+          state.remoteStream = event.streams[0];
+          els.remoteAudio.srcObject = state.remoteStream;
+          attachRemoteRecordingStream(state.remoteStream);
+        };
+        state.pc.oniceconnectionstatechange = () => {
+          els.transportState.textContent = `ICE ${state.pc?.iceConnectionState || "closed"}`;
+        };
+        for (const track of state.stream.getAudioTracks()) {
+          state.pc.addTrack(track, state.stream);
+        }
+
+        state.dc = state.pc.createDataChannel("oai-events");
+        state.dc.onopen = () => {
+          els.transportState.textContent = "Data channel open";
+          sendEvent({
+            type: "response.create",
+            response: {
+              instructions: "Start the session with one short friendly greeting. Use simple English first, then one brief Chinese rescue sentence."
+            }
+          });
+        };
+        state.dc.onmessage = (event) => handleRealtimeEvent(event.data);
+        state.dc.onerror = () => {
+          els.transportState.textContent = "Data channel error";
+        };
+
+        const offer = await state.pc.createOffer();
+        await state.pc.setLocalDescription(offer);
+
+        const tokenResp = await fetch("/voice/session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders()
+          },
+          body: JSON.stringify({ session_id: state.sessionId })
+        });
+        const tokenPayload = await tokenResp.json().catch(() => ({}));
+        if (!tokenResp.ok) {
+          throw new Error(tokenPayload.error || `voice session HTTP ${tokenResp.status}`);
+        }
+        const ephemeralKey = tokenPayload.value || tokenPayload.client_secret?.value;
+        if (!ephemeralKey) throw new Error("missing Realtime client secret");
+
+        const sdpResp = await fetch("https://api.openai.com/v1/realtime/calls", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${ephemeralKey}`,
+            "Content-Type": "application/sdp"
+          },
+          body: offer.sdp
+        });
+        const answerSdp = await sdpResp.text();
+        if (!sdpResp.ok) throw new Error(`Realtime SDP HTTP ${sdpResp.status}: ${answerSdp.slice(0, 220)}`);
+
+        await state.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+        setPhase("live");
+      } catch (error) {
+        addTurn("system", error.message || String(error));
+        await stopCall({ failed: true });
+        setPhase("error");
+        showError(error.message || String(error));
+      }
+    }
+
+    function stopCall({ failed = false } = {}) {
+      if (state.stopCallPromise) return state.stopCallPromise;
+      state.stoppingCall = true;
+      state.stopCallPromise = (async () => {
+        const wasRecording = Boolean(state.recorder);
+        const endedAt = new Date().toISOString();
+        let recordingSaved = false;
+        let recordingPending = false;
+        if (wasRecording) {
+          await stopRecorder();
+        }
+        closePeerConnection();
+        stopStream();
+        if (wasRecording) {
+          try {
+            await uploadRecording({ endedAt });
+            recordingSaved = true;
+          } catch (error) {
+            recordingPending = Boolean(state.pendingRecording);
+            addTurn("system", error.message || String(error));
+            showError(error.message || String(error));
+          }
+        }
+        state.sessionId = "";
+        state.startedAt = "";
+        state.startedMs = 0;
+        if (!state.authExpiredHandling) {
+          if (!failed && recordingSaved) {
+            addTurn("system", "Session ended. Recording saved.");
+          } else if (recordingPending) {
+            addTurn("system", "Session ended. Recording is pending sign-in before upload.");
+          } else if (!failed && !wasRecording) {
+            addTurn("system", "Session ended. No browser audio was captured.");
+          }
+          setPhase(failed || recordingPending ? "error" : "ended");
+          await refreshRecordings();
+        }
+      })().finally(() => {
+        state.stoppingCall = false;
+        state.stopCallPromise = null;
+      });
+      return state.stopCallPromise;
+    }
+
+    function closePeerConnection() {
+      try { state.dc?.close(); } catch {}
+      try { state.pc?.close(); } catch {}
+      state.dc = null;
+      state.pc = null;
+      state.remoteStream = null;
+      els.remoteAudio.srcObject = null;
+    }
+
+    function stopStream() {
+      for (const track of state.stream?.getTracks?.() || []) track.stop();
+      state.stream = null;
+    }
+
+    function startRecorder(stream) {
+      if (!window.MediaRecorder) {
+        els.recordingState.textContent = "Recording unavailable in this browser.";
+        return;
+      }
+      const recordingStream = mixedRecordingStream(stream);
+      const preferred = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4"
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      state.recorder = new MediaRecorder(recordingStream, preferred ? { mimeType: preferred } : undefined);
+      state.recorder.ondataavailable = (event) => {
+        if (!event.data?.size) return;
+        if (state.recordingCapReached) return;
+        const maxBytes = maxRecordingBytes();
+        if (maxBytes && state.recordedBytes + event.data.size > maxBytes) {
+          state.recordingCapReached = true;
+          els.recordingState.textContent = "Recording limit reached";
+          if (state.phase === "live" || state.phase === "connecting") stopCall();
+          return;
+        }
+        state.recordedBytes += event.data.size;
+        state.chunks.push(event.data);
+      };
+      state.recorder.start(1000);
+      els.recordingState.textContent = "Recording";
+    }
+
+    function stopRecorder() {
+      return new Promise((resolve) => {
+        if (!state.recorder) {
+          cleanupRecordingGraph();
+          resolve();
+          return;
+        }
+        const recorder = state.recorder;
+        state.recorder = null;
+        recorder.onstop = () => {
+          cleanupRecordingGraph();
+          resolve();
+        };
+        if (recorder.state !== "inactive") recorder.stop();
+        else {
+          cleanupRecordingGraph();
+          resolve();
+        }
+      });
+    }
+
+    function mixedRecordingStream(micStream) {
+      try {
+        state.audioContext = new AudioContext();
+        state.recordDestination = state.audioContext.createMediaStreamDestination();
+        state.micSource = state.audioContext.createMediaStreamSource(micStream);
+        state.micSource.connect(state.recordDestination);
+        if (state.remoteStream) attachRemoteRecordingStream(state.remoteStream);
+        return state.recordDestination.stream;
+      } catch (error) {
+        console.warn("Vox recording mix fallback:", error);
+        return micStream;
+      }
+    }
+
+    function attachRemoteRecordingStream(remoteStream) {
+      if (!state.audioContext || !state.recordDestination || !remoteStream?.getAudioTracks?.().length) return;
+      try {
+        state.remoteSource?.disconnect();
+        state.remoteSource = state.audioContext.createMediaStreamSource(remoteStream);
+        state.remoteSource.connect(state.recordDestination);
+      } catch (error) {
+        console.warn("Vox remote recording mix failed:", error);
+      }
+    }
+
+    function cleanupRecordingGraph() {
+      try { state.remoteSource?.disconnect(); } catch {}
+      try { state.micSource?.disconnect(); } catch {}
+      try { state.audioContext?.close(); } catch {}
+      state.remoteSource = null;
+      state.micSource = null;
+      state.recordDestination = null;
+      state.audioContext = null;
+    }
+
+    async function uploadRecording({ endedAt, pending = null } = {}) {
+      const recording = pending || buildRecordingPayload({ endedAt });
+      if (!recording) {
+        els.recordingState.textContent = "No audio captured";
+        return;
+      }
+      const maxBytes = maxRecordingBytes();
+      if (maxBytes && recording.blob.size > maxBytes) {
+        els.recordingState.textContent = "Recording is too large";
+        throw new Error(`recording exceeds ${formatBytes(maxBytes)} limit`);
+      }
+      const resp = await fetch("/api/recordings", {
+        method: "POST",
+        headers: {
+          "Content-Type": recording.blob.type || "application/octet-stream",
+          "X-Vox-Session-Id": recording.sessionId,
+          "X-Vox-Started-At": recording.startedAt,
+          "X-Vox-Ended-At": recording.endedAt,
+          "X-Vox-Duration-Ms": String(recording.durationMs),
+          "X-Vox-Transcript": recording.transcript,
+          ...authHeaders()
+        },
+        body: recording.blob
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        if (resp.status === 401) {
+          state.pendingRecording = recording;
+          els.recordingState.textContent = "Recording pending sign-in";
+          handleAuthExpired();
+          throw new Error("sign in expired; recording is kept in this browser until you sign in again");
+        }
+        els.recordingState.textContent = "Recording save failed";
+        throw new Error(payload.error || `recording upload HTTP ${resp.status}`);
+      }
+      if (pending) state.pendingRecording = null;
+      els.recordingState.textContent = recording.partial
+        ? `Saved partial ${formatBytes(payload.recording.bytes)}`
+        : `Saved ${formatBytes(payload.recording.bytes)}`;
+    }
+
+    function buildRecordingPayload({ endedAt }) {
+      if (!state.chunks.length) return null;
+      const mimeType = state.chunks[0].type || "audio/webm";
+      return {
+        blob: new Blob(state.chunks, { type: mimeType }),
+        sessionId: state.sessionId,
+        startedAt: state.startedAt,
+        endedAt,
+        durationMs: state.startedMs ? Date.now() - state.startedMs : "",
+        transcript: recordingTranscriptHeader(),
+        partial: state.recordingCapReached
+      };
+    }
+
+    function recordingTranscriptHeader() {
+      let turns = state.turns.slice(-40).map((turn) => ({
+        role: turn.role,
+        text: String(turn.text || "").slice(0, 500)
+      }));
+      let encoded = encodeURIComponent(JSON.stringify(turns));
+      while (encoded.length > 6000 && turns.length > 1) {
+        turns = turns.slice(1);
+        encoded = encodeURIComponent(JSON.stringify(turns));
+      }
+      return encoded;
+    }
+
+    async function flushPendingRecording() {
+      if (!state.pendingRecording || !state.user) return;
+      try {
+        await uploadRecording({ pending: state.pendingRecording });
+      } catch (error) {
+        showError(error.message || String(error));
+      }
+    }
+
+    async function refreshRecordings() {
+      if (!state.user) {
+        state.recordings = [];
+        renderRecordings();
+        return;
+      }
+      const resp = await fetch("/api/recordings", { headers: authHeaders(), cache: "no-store" });
+      if (!resp.ok) {
+        if (resp.status === 401) {
+          handleAuthExpired();
+          return;
+        }
+        state.recordings = [];
+        renderRecordings(`Recordings HTTP ${resp.status}`);
+        return;
+      }
+      const payload = await resp.json();
+      state.recordings = payload.recordings || [];
+      renderRecordings();
+    }
+
+    function handleRealtimeEvent(raw) {
+      let event;
+      try { event = JSON.parse(raw); } catch { return; }
+      switch (event.type) {
+        case "response.created":
+          state.assistantDraft = "";
+          state.assistantDraftIndex = null;
+          setPhase("live");
+          break;
+        case "input_audio_buffer.speech_started":
+          els.connectionBadge.textContent = "Listening";
+          break;
+        case "response.output_audio_transcript.delta":
+        case "response.audio_transcript.delta":
+        case "response.output_text.delta":
+          if (event.delta) updateAssistantDraft(event.delta);
+          break;
+        case "response.output_audio_transcript.done":
+        case "response.audio_transcript.done":
+        case "response.output_text.done":
+          finalizeAssistant(event.transcript || event.text || state.assistantDraft);
+          break;
+        case "conversation.item.input_audio_transcription.completed":
+          if (event.transcript) addTurn("user", event.transcript);
+          break;
+        case "response.output_item.done":
+          if (event.item?.type === "function_call") handleFunctionCall(event.item);
+          break;
+        case "response.done":
+        case "response.output_audio.done":
+        case "response.audio.done":
+          els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
+          break;
+        case "error":
+          addTurn("system", event.error?.message || "Realtime error");
+          showError(event.error?.message || "Realtime error");
+          break;
+        default:
+          break;
+      }
+    }
+
+    async function handleFunctionCall(item) {
+      const output = await callBridgeTool(item.name, item.arguments || "{}");
+      sendEvent({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: item.call_id,
+          output
+        }
+      });
+      sendEvent({ type: "response.create" });
+    }
+
+    async function callBridgeTool(name, argsString) {
+      try {
+        const resp = await fetch("/tool/call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ name, arguments: argsString })
+        });
+        if (resp.status === 401) {
+          handleAuthExpired();
+          return "tool error: sign in expired";
+        }
+        const payload = await resp.json();
+        return payload.output || JSON.stringify(payload);
+      } catch (error) {
+        return `tool error: ${error.message || String(error)}`;
+      }
+    }
+
+    function sendEvent(obj) {
+      if (state.dc?.readyState !== "open") return;
+      state.dc.send(JSON.stringify(obj));
+    }
+
+    function updateAssistantDraft(delta) {
+      state.assistantDraft += delta;
+      const draftIndex = state.assistantDraftIndex;
+      const draftTurn = Number.isInteger(draftIndex) ? state.turns[draftIndex] : null;
+      if (draftTurn?.role === "assistant" && draftTurn.draft) {
+        draftTurn.text = state.assistantDraft;
+      } else {
+        state.assistantDraftIndex = state.turns.length;
+        state.turns.push({ role: "assistant", text: state.assistantDraft, draft: true });
+      }
+      renderTurns();
+    }
+
+    function finalizeAssistant(text) {
+      const clean = (text || state.assistantDraft || "").trim();
+      const draftIndex = state.assistantDraftIndex;
+      const draftTurn = Number.isInteger(draftIndex) ? state.turns[draftIndex] : null;
+      if (!clean) {
+        if (draftTurn?.role === "assistant" && draftTurn.draft) state.turns.splice(draftIndex, 1);
+        state.assistantDraft = "";
+        state.assistantDraftIndex = null;
+        renderTurns();
+        return;
+      }
+      if (draftTurn?.role === "assistant" && draftTurn.draft) {
+        draftTurn.text = clean;
+        delete draftTurn.draft;
+      } else {
+        state.turns.push({ role: "assistant", text: clean });
+      }
+      state.assistantDraft = "";
+      state.assistantDraftIndex = null;
+      renderTurns();
+    }
+
+    function addTurn(role, text) {
+      if (!text) return;
+      state.turns.push({ role, text });
+      renderTurns();
     }
 
     function renderTurns() {
-      const items = script.slice(0, shown);
-      el.turns.innerHTML = items.map((line, index) => {
-        const current = index === items.length - 1 ? " current" : "";
-        const role = line.who === "learner" ? " learner" : "";
-        const hide = showChinese ? "" : " hide-zh";
-        const who = line.who === "learner" ? "Learner" : "Vox";
-        return `
-          <article class="turn${role}${current}${hide}">
-            <div class="who">${who}</div>
-            <p class="en">${line.en}</p>
-            <p class="zh">${line.zh}</p>
-          </article>
-        `;
-      }).join("");
-      requestAnimationFrame(scrollToBottom);
-    }
-
-    function stateMarkup() {
-      if (phase === "listening") {
-        return `<span class="dots" aria-hidden="true"><b></b><b></b><b></b></span><span>Listening</span>`;
-      }
-      if (phase === "thinking") return `<span style="letter-spacing:.28em">· · ·</span>`;
-      if (phase === "ended") return `<span>End of segment</span>`;
-      return `<span>Ready</span>`;
-    }
-
-    function micMarkup() {
-      if (phase === "listening") {
-        return `<span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>Your turn</span>`;
-      }
-      if (running) {
-        return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg><span>Pause</span>`;
-      }
-      if (phase === "ended") {
-        return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14l11-7-11-7Z" fill="currentColor"></path></svg><span>Start again</span>`;
-      }
-      return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg><span>Start</span>`;
-    }
-
-    function renderControls() {
-      el.zhToggle.setAttribute("aria-pressed", String(showChinese));
-      el.micButton.classList.toggle("live", phase === "listening");
-      el.micButton.innerHTML = micMarkup();
-      el.stateRow.innerHTML = stateMarkup();
-      el.sessionMeta.textContent = running ? (phase === "listening" ? "LISTEN" : "LIVE") : (phase === "ended" ? "DONE" : "READY");
-    }
-
-    function renderSettings() {
-      document.querySelectorAll(".sheet-tab").forEach((tab) => {
-        tab.classList.toggle("active", tab.dataset.panel === panel);
+      els.turns.innerHTML = state.turns.map((turn) => `
+        <article class="turn ${escapeHtml(turn.role)}">
+          <div class="who">${turn.role === "user" ? "You" : turn.role === "assistant" ? "Vox" : "System"}</div>
+          <p class="text">${escapeHtml(turn.text)}</p>
+        </article>
+      `).join("");
+      requestAnimationFrame(() => {
+        const scroller = els.turns.closest(".transcript");
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
       });
-      el.settingsBody.innerHTML = settingsPanels[panel].map(([label, value]) => `
-        <div class="setting"><span>${label}</span><span>${value}</span></div>
+    }
+
+    function renderAuth() {
+      const signedIn = Boolean(state.user);
+      els.loginPanel.hidden = signedIn;
+      els.accountLabel.textContent = signedIn ? (state.user.email || state.user.name || "Signed in") : "Signed out";
+      els.signOutButton.hidden = !signedIn || state.user.provider === "dev";
+      els.callButton.disabled = !signedIn || state.phase === "signed_out" || state.phase === "booting";
+      els.localDevButton.hidden = state.config?.auth?.required !== false;
+      renderPhase();
+    }
+
+    function renderPhase() {
+      const label = labelForPhase(state.phase);
+      els.statusBadge.textContent = label;
+      els.connectionBadge.textContent = label;
+      els.statusBadge.classList.toggle("live", state.phase === "live");
+      els.connectionBadge.classList.toggle("live", state.phase === "live");
+      els.statusBadge.classList.toggle("error", state.phase === "error");
+      els.connectionBadge.classList.toggle("error", state.phase === "error");
+      const active = state.phase === "live" || state.phase === "connecting";
+      els.callButton.classList.toggle("live", active);
+      els.callButton.innerHTML = active ? `<span class="pulse"></span><span>End and save</span>` : `<span>Start live voice</span>`;
+      els.callButton.disabled = !state.user || state.phase === "booting";
+      if (!active && state.phase !== "ended") {
+        els.transportState.textContent = "WebRTC idle";
+      }
+    }
+
+    function renderRecordings(message = "") {
+      if (message) {
+        els.recordingList.innerHTML = `<div class="recording"><strong>${escapeHtml(message)}</strong></div>`;
+        return;
+      }
+      if (!state.recordings.length) {
+        els.recordingList.innerHTML = `<div class="recording"><strong>No recordings yet</strong><span>Start a session to create one.</span></div>`;
+        return;
+      }
+      els.recordingList.innerHTML = state.recordings.slice(0, 8).map((item) => `
+        <div class="recording">
+          <strong>${escapeHtml(new Date(item.saved_at || item.ended_at).toLocaleString())}</strong>
+          <span>${formatBytes(item.bytes)} · ${escapeHtml(item.mime_type || "audio")}</span>
+        </div>
       `).join("");
     }
 
-    function render() {
-      renderTurns();
-      renderControls();
-      renderSettings();
+    function setPhase(phase) {
+      state.phase = phase;
+      renderPhase();
     }
 
-    function clearCycle() {
-      if (timer) clearTimeout(timer);
-      timer = null;
+    function labelForPhase(phase) {
+      if (phase === "booting") return "Booting";
+      if (phase === "signed_out") return "Sign in";
+      if (phase === "connecting") return "Connecting";
+      if (phase === "live") return "Live";
+      if (phase === "ended") return "Saved";
+      if (phase === "error") return "Error";
+      return "Ready";
     }
 
-    function schedule() {
-      clearCycle();
-      if (!running) return;
-      const current = script[shown - 1];
-      const delay = phase === "listening" ? 2500 : phase === "thinking" ? 760 : 2300;
-      timer = setTimeout(() => {
-        if (phase === "speaking") {
-          phase = current.who === "vox" ? "listening" : "thinking";
-        } else if (shown < script.length) {
-          shown += 1;
-          phase = script[shown - 1].who === "vox" ? "speaking" : "thinking";
-        } else {
-          running = false;
-          phase = "ended";
-        }
-        render();
-        schedule();
-      }, delay);
+    function authHeaders() {
+      return state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {};
     }
 
-    function start() {
-      if (phase === "ended") {
-        shown = 1;
+    function maxRecordingBytes() {
+      return Number(state.config?.recordings?.max_bytes || 0);
+    }
+
+    function handleAuthExpired() {
+      if (state.authExpiredHandling) return;
+      state.authExpiredHandling = true;
+      const active = (state.phase === "live" || state.phase === "connecting") && !state.stoppingCall;
+      if (active) {
+        els.recordingState.textContent = "Session expired. Stopping call.";
+        stopCall({ failed: true }).finally(showSignedOutAfterExpiry);
+        return;
       }
-      running = true;
-      phase = script[shown - 1].who === "vox" ? "speaking" : "thinking";
-      sticky = true;
-      render();
-      schedule();
+      showSignedOutAfterExpiry();
     }
 
-    function pause() {
-      running = false;
-      clearCycle();
-      renderControls();
+    function showSignedOutAfterExpiry() {
+      state.user = null;
+      state.accessToken = "";
+      state.recordings = [];
+      setPhase("signed_out");
+      renderAuth();
+      renderRecordings();
+      showError("Your Vox session expired. Sign in again before starting voice practice.");
+      state.authExpiredHandling = false;
     }
 
-    function restart() {
-      shown = 2;
-      running = false;
-      phase = "idle";
-      sticky = true;
-      clearCycle();
-      render();
+    function showFatal(message) {
+      setPhase("error");
+      showError(message);
+      els.googleButton.disabled = true;
+      els.callButton.disabled = true;
+      renderAuth();
     }
 
-    function openSheet(nextPanel = panel) {
-      panel = nextPanel;
-      el.sheet.classList.add("open");
-      el.sheetBackdrop.classList.add("open");
-      renderSettings();
+    function showError(message) {
+      els.loginError.hidden = false;
+      els.loginError.textContent = message;
     }
 
-    function closeSheet() {
-      el.sheet.classList.remove("open");
-      el.sheetBackdrop.classList.remove("open");
+    function clearError() {
+      els.loginError.hidden = true;
+      els.loginError.textContent = "";
     }
 
-    el.transcript.addEventListener("scroll", () => { sticky = nearBottom(); }, { passive: true });
-    el.zhToggle.addEventListener("click", () => {
-      showChinese = !showChinese;
-      render();
-    });
-    el.micButton.addEventListener("click", () => {
-      running ? pause() : start();
-    });
-    el.restartButton.addEventListener("click", restart);
-    el.moreButton.addEventListener("click", () => openSheet("course"));
-    el.levelButton.addEventListener("click", () => openSheet("memory"));
-    el.closeSheet.addEventListener("click", closeSheet);
-    el.sheetBackdrop.addEventListener("click", closeSheet);
-    document.querySelectorAll(".sheet-tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        panel = tab.dataset.panel;
-        renderSettings();
-      });
-    });
+    function formatBytes(bytes) {
+      const n = Number(bytes || 0);
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    }
 
-    render();
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
   </script>
 </body>
 </html>

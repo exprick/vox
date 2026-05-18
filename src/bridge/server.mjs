@@ -1,7 +1,9 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { authenticateRequest, publicAuthConfig, HttpError } from './auth.mjs';
 import { createRealtimeSession, transcribeWavBuffer } from './voice.mjs';
+import { listRecordings, saveRecording } from './recordings.mjs';
 import { dispatchArtifactCreate } from './dispatch.mjs';
 import { createFillBlankArtifact } from './fill-blank-template.mjs';
 import {
@@ -12,13 +14,16 @@ import {
   bindToolCmdEnqueuer,
 } from './tools/index.mjs';
 
-const PORT = Number(process.env.PORT || 3205);
+const PORT = Number(process.env.PORT || 3203);
 // Default to loopback: the bridge has unauthenticated local-dev routes that
 // can enqueue commands and run tools. Use HOST=0.0.0.0 only on a trusted LAN.
 const HOST = process.env.HOST || '127.0.0.1';
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..');
+const WEB_DIR = path.join(PROJECT_ROOT, 'web');
 const FIXTURES_DIR = path.join(PROJECT_ROOT, 'tests', 'fixtures');
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
+const MAX_RECORDING_BYTES = Number(process.env.VOX_MAX_RECORDING_BYTES || process.env.MAX_RECORDING_BYTES || 50 * 1024 * 1024);
+let webRealpathCache = null;
 const MAX_CMD_QUEUE = Number(process.env.MAX_CMD_QUEUE || 200);
 const MAX_CMD_RESULTS = Number(process.env.MAX_CMD_RESULTS || 200);
 const CMD_RESULT_TTL_MS = Number(process.env.CMD_RESULT_TTL_MS || 10 * 60 * 1000);
@@ -60,7 +65,28 @@ const server = http.createServer(async (req, res) => {
       respond(res, 200, { ok: true });
       return;
     }
+    if (route === 'GET /api/config') {
+      respond(res, 200, {
+        ok: true,
+        auth: publicAuthConfig(),
+        realtime: {
+          model: process.env.VOX_REALTIME_MODEL || 'gpt-realtime',
+          voice: process.env.VOX_REALTIME_VOICE || 'marin',
+        },
+        recordings: {
+          enabled: true,
+          max_bytes: MAX_RECORDING_BYTES,
+        },
+      });
+      return;
+    }
+    if (route === 'GET /api/me') {
+      const user = await authenticateRequest(req);
+      respond(res, 200, { ok: true, user: publicUser(user) });
+      return;
+    }
     if (req.method === 'GET' && req.url.startsWith('/fixtures/')) {
+      await authenticateOrLocalBridge(req);
       const name = req.url.replace(/^\/fixtures\//, '').split('?')[0];
       if (!/^[\w.-]+$/.test(name)) { respond(res, 400, { error: 'bad name' }); return; }
       const file = path.join(FIXTURES_DIR, name);
@@ -77,12 +103,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === 'POST /voice/session') {
-      const body = await readBody(req);
-      const session = await createRealtimeSession(body);
-      respond(res, 200, session);
+      const user = await authenticateOrLocalBridge(req);
+      const session = await createRealtimeSession({ user });
+      respond(res, 200, { ...session, user: publicUser(user) });
+      return;
+    }
+    if (route === 'POST /api/recordings') {
+      const user = await authenticateRequest(req);
+      const bytes = await readRawBody(req, MAX_RECORDING_BYTES);
+      if (bytes.length === 0) { respond(res, 400, { ok: false, error: 'empty recording' }); return; }
+      const metadata = await saveRecording({
+        bytes,
+        mimeType: req.headers['content-type'] || 'application/octet-stream',
+        user,
+        sessionId: headerValue(req, 'x-vox-session-id'),
+        startedAt: headerValue(req, 'x-vox-started-at'),
+        endedAt: headerValue(req, 'x-vox-ended-at'),
+        durationMs: headerValue(req, 'x-vox-duration-ms'),
+        transcript: parseJsonHeader(req, 'x-vox-transcript'),
+      });
+      respond(res, 200, { ok: true, recording: metadata });
+      return;
+    }
+    if (route === 'GET /api/recordings') {
+      const user = await authenticateRequest(req);
+      const recordings = await listRecordings({ user });
+      respond(res, 200, { ok: true, recordings });
       return;
     }
     if (route === 'POST /artifact/create') {
+      await authenticateOrLocalBridge(req);
       const body = await readBody(req);
       const result = await dispatchArtifactCreate(body);
       respond(res, result.ok ? 200 : 500, result);
@@ -90,6 +140,7 @@ const server = http.createServer(async (req, res) => {
     }
     // ── Agent tools (function_call dispatch from iPhone Realtime) ──
     if (route === 'POST /tool/call') {
+      await authenticateOrLocalBridge(req);
       const body = await readBody(req);
       const { name, arguments: argsField, args } = body;
       // OpenAI Realtime sends "arguments" as a JSON string on function_call;
@@ -112,21 +163,25 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === 'POST /test/app-state') {
+      await authenticateOrLocalBridge(req);
       // iPhone POSTs here on tab change / drill state change / transcript turn.
       const body = await readBody(req);
       respond(res, 200, recordAppState(body));
       return;
     }
     if (route === 'GET /test/app-state') {
+      await authenticateOrLocalBridge(req);
       respond(res, 200, appStateSnapshot());
       return;
     }
     if (route === 'GET /test/codex-tasks') {
+      await authenticateOrLocalBridge(req);
       respond(res, 200, { tasks: codexTaskTable() });
       return;
     }
 
     if (route === 'POST /artifact/fill-blank') {
+      await authenticateOrLocalBridge(req);
       // Templated path — fast (<100ms), deterministic, used by Tab 2 Generate
       // button (iOS) AND by E2E tests + voice tools.
       // Body: { topic: string, questions: [{sentence, answer, options}, ...] }
@@ -163,6 +218,7 @@ const server = http.createServer(async (req, res) => {
     // Bridge already listens on 0.0.0.0 so this is reachable from iPhone over LAN.
     // Routes: /artifact/latest/  /artifact/latest/index.html  /artifact/<id>/<file>
     if ((req.method === 'GET' || req.method === 'HEAD') && req.url.startsWith('/artifact/')) {
+      await authenticateOrLocalBridge(req);
       const rel = req.url.replace(/^\/artifact\//, '').split('?')[0];
       // Disallow ../ traversal.
       if (rel.includes('..')) { respond(res, 400, { error: 'bad path' }); return; }
@@ -188,6 +244,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === 'POST /test/state') {
+      await authenticateOrLocalBridge(req);
       const body = await readBody(req);
       const entry = { ...body, received_at: Date.now() };
       stateHistory.push(entry);
@@ -196,14 +253,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === 'GET /test/state') {
+      await authenticateOrLocalBridge(req);
       respond(res, 200, { latest: stateHistory[stateHistory.length - 1] || null, count: stateHistory.length });
       return;
     }
     if (route === 'GET /test/state/history') {
+      await authenticateOrLocalBridge(req);
       respond(res, 200, { history: stateHistory });
       return;
     }
     if (route === 'POST /test/state/clear') {
+      await authenticateOrLocalBridge(req);
       stateHistory.length = 0;
       respond(res, 200, { ok: true });
       return;
@@ -211,17 +271,20 @@ const server = http.createServer(async (req, res) => {
 
     // ── iPhone control: command queue ──
     if (route === 'POST /cmd/push') {
+      await authenticateOrLocalBridge(req);
       const body = await readBody(req);
       const id = pushCommand(body);
       respond(res, 200, { id });
       return;
     }
     if (route === 'GET /cmd/next') {
+      await authenticateOrLocalBridge(req);
       const cmd = cmdQueue.shift() || null;
       respond(res, 200, { cmd });
       return;
     }
     if (route === 'POST /cmd/result') {
+      await authenticateOrLocalBridge(req);
       const body = await readBody(req);
       cmdResults.set(body.id, { result: body.result, error: body.error, completed_at: Date.now() });
       trimCommandResults();
@@ -229,6 +292,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'GET' && req.url.startsWith('/cmd/result/')) {
+      await authenticateOrLocalBridge(req);
       const id = req.url.replace('/cmd/result/', '').split('?')[0];
       const r = cmdResults.get(id);
       respond(res, r ? 200 : 404, r || { error: 'not found' });
@@ -237,17 +301,20 @@ const server = http.createServer(async (req, res) => {
 
     // ── iPhone uploads ──
     if (route === 'POST /upload/screenshot') {
+      await authenticateOrLocalBridge(req);
       lastScreenshot = { bytes: await readRawBody(req), ts: Date.now() };
       respond(res, 200, { ok: true, size: lastScreenshot.bytes.length });
       return;
     }
     if (route === 'GET /upload/screenshot') {
+      await authenticateOrLocalBridge(req);
       if (!lastScreenshot) { respond(res, 404, { error: 'no screenshot' }); return; }
       res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': lastScreenshot.bytes.length });
       res.end(lastScreenshot.bytes);
       return;
     }
     if (route === 'POST /upload/log') {
+      await authenticateOrLocalBridge(req);
       const body = await readBody(req);
       if (Array.isArray(body.lines)) logBuffer.push(...body.lines);
       if (logBuffer.length > MAX_LOG) logBuffer = logBuffer.slice(-MAX_LOG);
@@ -255,29 +322,38 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === 'GET /upload/log') {
+      await authenticateOrLocalBridge(req);
       respond(res, 200, { lines: logBuffer });
       return;
     }
     if (route === 'POST /upload/audio') {
+      await authenticateOrLocalBridge(req);
       lastReceivedAudio = { bytes: await readRawBody(req), ts: Date.now() };
       respond(res, 200, { ok: true, size: lastReceivedAudio.bytes.length });
       return;
     }
     if (route === 'GET /upload/audio/transcribe') {
+      await authenticateOrLocalBridge(req);
       if (!lastReceivedAudio) { respond(res, 404, { error: 'no audio' }); return; }
       const result = await transcribeWavBuffer(lastReceivedAudio.bytes);
       respond(res, 200, result);
       return;
     }
     if (route === 'GET /upload/audio.wav') {
+      await authenticateOrLocalBridge(req);
       if (!lastReceivedAudio) { respond(res, 404, { error: 'no audio' }); return; }
       res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': lastReceivedAudio.bytes.length });
       res.end(lastReceivedAudio.bytes);
       return;
     }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const served = await serveStatic(req, res);
+      if (served) return;
+    }
     respond(res, 404, { error: `unknown route: ${route}` });
   } catch (e) {
-    const status = e.code === 'BODY_TOO_LARGE' ? 413
+    const status = e instanceof HttpError ? e.status
+      : e.code === 'BODY_TOO_LARGE' ? 413
       : e.code === 'UNSUPPORTED_MEDIA_TYPE' ? 415
         : 500;
     respond(res, status, { error: String(e.message || e) });
@@ -318,13 +394,13 @@ function trimCommandResults() {
   }
 }
 
-async function readRawBody(req) {
+async function readRawBody(req, maxBytes = MAX_BODY_BYTES) {
   const chunks = [];
   let total = 0;
   for await (const c of req) {
     total += c.length;
-    if (total > MAX_BODY_BYTES) {
-      const err = new Error(`request body too large: ${total} bytes > ${MAX_BODY_BYTES}`);
+    if (total > maxBytes) {
+      const err = new Error(`request body too large: ${total} bytes > ${maxBytes}`);
       err.code = 'BODY_TOO_LARGE';
       throw err;
     }
@@ -336,4 +412,171 @@ async function readRawBody(req) {
 function respond(res, status, payload) {
   res.writeHead(status);
   res.end(JSON.stringify(payload));
+}
+
+async function serveStatic(req, res) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://vox.local').pathname);
+  } catch {
+    respond(res, 400, { error: 'bad url' });
+    return true;
+  }
+  const rel = pathname === '/' ? 'index.html'
+    : pathname.endsWith('/') ? `${pathname.slice(1)}index.html`
+      : pathname.slice(1);
+  const normalized = path.normalize(rel);
+  if (normalized === '..' || normalized.startsWith(`..${path.sep}`) || path.isAbsolute(normalized)) {
+    respond(res, 400, { error: 'bad path' });
+    return true;
+  }
+  const filePath = path.join(WEB_DIR, normalized);
+  try {
+    const [webRootRealpath, fileRealpath] = await Promise.all([webRealpath(), fs.realpath(filePath)]);
+    if (fileRealpath !== webRootRealpath && !fileRealpath.startsWith(`${webRootRealpath}${path.sep}`)) {
+      respond(res, 400, { error: 'bad path' });
+      return true;
+    }
+    if (req.method === 'HEAD') {
+      const stats = await fs.stat(fileRealpath);
+      res.writeHead(200, {
+        'Content-Type': contentTypeFor(fileRealpath),
+        'Content-Length': stats.size,
+        'Cache-Control': 'no-store',
+      });
+      res.end();
+      return true;
+    }
+    const data = await fs.readFile(fileRealpath);
+    res.writeHead(200, {
+      'Content-Type': contentTypeFor(fileRealpath),
+      'Content-Length': data.length,
+      'Cache-Control': 'no-store',
+    });
+    res.end(data);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function contentTypeFor(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.html') return 'text/html; charset=utf-8';
+  if (ext === '.css') return 'text/css; charset=utf-8';
+  if (ext === '.js') return 'application/javascript; charset=utf-8';
+  if (ext === '.mjs') return 'application/javascript; charset=utf-8';
+  if (ext === '.json') return 'application/json; charset=utf-8';
+  if (ext === '.webmanifest') return 'application/manifest+json; charset=utf-8';
+  if (ext === '.wasm') return 'application/wasm';
+  if (ext === '.woff2') return 'font/woff2';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.svg') return 'image/svg+xml';
+  if (ext === '.ico') return 'image/x-icon';
+  return 'application/octet-stream';
+}
+
+function headerValue(req, name) {
+  const value = req.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    provider: user.provider,
+  };
+}
+
+async function webRealpath() {
+  if (webRealpathCache) return webRealpathCache;
+  webRealpathCache = await fs.realpath(WEB_DIR);
+  return webRealpathCache;
+}
+
+async function authenticateOrLocalBridge(req) {
+  try {
+    return await authenticateRequest(req);
+  } catch (error) {
+    if (error instanceof HttpError && [401, 503].includes(error.status) && isTrustedLocalBridgeRequest(req)) {
+      return {
+        id: 'local-bridge',
+        email: 'local@bridge.vox',
+        name: 'Local Vox Bridge',
+        provider: 'local-bridge',
+        safetyIdentifier: 'local-bridge',
+      };
+    }
+    throw error;
+  }
+}
+
+function isTrustedLocalBridgeRequest(req) {
+  if (String(process.env.VOX_ALLOW_LOCAL_BRIDGE_BYPASS || '0') !== '1') return false;
+  const forwardedHeaders = [
+    'cf-connecting-ip',
+    'x-forwarded-for',
+    'x-real-ip',
+    'forwarded',
+  ];
+  if (forwardedHeaders.some((name) => req.headers[name])) return false;
+
+  const remote = normalizeNetworkAddress(req.socket.remoteAddress || '');
+  if (!isLoopbackAddress(remote)) return false;
+
+  const host = hostNameFromHeader(req.headers.host);
+  if (!isLoopbackAddress(host)) return false;
+
+  return isTrustedLocalBrowserSource(req);
+}
+
+function normalizeNetworkAddress(value) {
+  return String(value).trim().toLowerCase().replace(/^::ffff:/, '');
+}
+
+function hostNameFromHeader(value) {
+  const host = String(Array.isArray(value) ? value[0] : value || '').trim().toLowerCase();
+  if (!host) return '';
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    return end > 0 ? host.slice(1, end) : host;
+  }
+  return host.split(':')[0];
+}
+
+function isLoopbackAddress(value) {
+  const normalized = normalizeNetworkAddress(value);
+  return normalized === '127.0.0.1' || normalized === '::1' || normalized === 'localhost';
+}
+
+function isTrustedLocalBrowserSource(req) {
+  const origin = headerValue(req, 'origin');
+  const referer = headerValue(req, 'referer');
+  if (origin && !isLoopbackOrigin(origin)) return false;
+  if (referer && !isLoopbackOrigin(referer)) return false;
+  return true;
+}
+
+function isLoopbackOrigin(value) {
+  try {
+    const url = new URL(value);
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
+    return isLoopbackAddress(url.hostname) && port === String(PORT);
+  } catch {
+    return false;
+  }
+}
+
+function parseJsonHeader(req, name) {
+  const value = headerValue(req, name);
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

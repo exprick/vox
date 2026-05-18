@@ -5,7 +5,7 @@ Vox is a local-first voice English tutor prototype.
 It combines:
 
 - an iOS SwiftUI shell with a Voice tab and a Drill tab
-- a Node.js bridge that mints OpenAI Realtime ephemeral sessions
+- a Node.js bridge that serves the web app, gates Realtime sessions, and stores voice recordings
 - a WKWebView drill surface for generated HTML practice activities
 
 ## Status
@@ -22,15 +22,32 @@ Keep both in sync when changing Vox's product direction, user-facing capabilitie
 - Node.js 22+
 - Xcode + XcodeGen for the iOS app
 - an OpenAI API key with Realtime access
+- Supabase Auth with Google OAuth for production login
 
 ## Bridge
 
 ```bash
 npm install
-OPENAI_API_KEY=... node src/bridge/server.mjs
+OPENAI_API_KEY=... VOX_AUTH_REQUIRED=0 node src/bridge/server.mjs
 ```
 
-The bridge listens on `PORT=3205` by default. For a physical iPhone, set the app's `bridgeBase` user default or edit the local bridge URL for your LAN.
+The bridge listens on `PORT=3203` by default and serves `web/` plus the API routes on the same origin.
+
+Production login requires:
+
+```bash
+OPENAI_API_KEY=...
+VOX_AUTH_REQUIRED=1
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+VOX_ALLOWED_EMAILS=rick@exp.game
+VOX_RECORDINGS_DIR=.vox-recordings
+node src/bridge/server.mjs
+```
+
+Runtime recordings are written under `VOX_RECORDINGS_DIR` and must not be committed.
+
+Requests that arrive through a proxy or public tunnel must pass Supabase auth before they can mint Realtime sessions, call tools, poll commands, or read uploaded artifacts. For simulator-only bridge development, `VOX_ALLOW_LOCAL_BRIDGE_BYPASS=1` allows no-token loopback calls only when both the remote address and `Host` header are localhost/127.0.0.1; keep it disabled in production.
 
 ## iOS
 

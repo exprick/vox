@@ -60,9 +60,9 @@ final class DrillViewModel: ObservableObject {
     private var bridgeBase: String {
         if let v = UserDefaults.standard.string(forKey: "bridgeBase") { return v }
         #if targetEnvironment(simulator)
-        return "http://127.0.0.1:3205"
+        return "http://127.0.0.1:3203"
         #else
-        return "http://127.0.0.1:3205"
+        return "http://127.0.0.1:3203"
         #endif
     }
 

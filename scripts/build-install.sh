@@ -7,7 +7,7 @@
 #   3. devicectl installs + launches; PollClient resumes polling /cmd/next
 #
 # After install: run any of the E2E drivers (tests/voice-e2e-real-lifecycle.mjs,
-# tests/voice-e2e-l2.mjs) which talk to the bridge on :3205.
+# tests/voice-e2e-l2.mjs) which talk to the bridge on :3203.
 #
 # Required environment:
 #   VOX_DEVICE_ECID   xcodebuild destination id for the device

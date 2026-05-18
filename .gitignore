@@ -6,6 +6,7 @@ artifacts/
 .sync-conflict
 .env
 .env.local
+.vox-recordings/
 *.log
 .DS_Store
 
