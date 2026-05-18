@@ -104,7 +104,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === 'POST /voice/session') {
       const user = await authenticateOrLocalBridge(req);
-      const session = await createRealtimeSession({ user });
+      const body = await readBody(req).catch(() => ({}));
+      const session = await createRealtimeSession({ user, clientResponseCreate: body?.client_response_create === true });
       respond(res, 200, { ...session, user: publicUser(user) });
       return;
     }
@@ -121,6 +122,7 @@ const server = http.createServer(async (req, res) => {
         endedAt: headerValue(req, 'x-vox-ended-at'),
         durationMs: headerValue(req, 'x-vox-duration-ms'),
         transcript: parseJsonHeader(req, 'x-vox-transcript'),
+        events: parseJsonHeader(req, 'x-vox-events'),
       });
       respond(res, 200, { ok: true, recording: metadata });
       return;

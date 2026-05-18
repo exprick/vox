@@ -51,7 +51,9 @@ USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. 
     audio: {
       input: {
         transcription,
-        turn_detection: realtimeTurnDetectionConfig(),
+        turn_detection: realtimeTurnDetectionConfig(process.env, {
+          defaultCreateResponse: opts.clientResponseCreate !== true,
+        }),
       },
       output: {
         voice,
@@ -83,17 +85,19 @@ USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. 
     },
     model,
     voice,
+    vox_server_creates_responses: session.audio.input.turn_detection.create_response === true,
   };
 }
 
 export function realtimeTurnDetectionConfig(env = process.env, opts = {}) {
   const warn = typeof opts.warn === 'function' ? opts.warn : console.warn;
+  const defaultCreateResponse = typeof opts.defaultCreateResponse === 'boolean' ? opts.defaultCreateResponse : true;
   return {
     type: 'server_vad',
     threshold: readNumberEnv(env.VOX_VAD_THRESHOLD, 0.65, { min: 0, max: 1, name: 'VOX_VAD_THRESHOLD', warn }),
     prefix_padding_ms: readIntegerEnv(env.VOX_VAD_PREFIX_PADDING_MS, 500, { min: 0, max: 2000, name: 'VOX_VAD_PREFIX_PADDING_MS', warn }),
     silence_duration_ms: readIntegerEnv(env.VOX_VAD_SILENCE_DURATION_MS, 900, { min: 200, max: 3000, name: 'VOX_VAD_SILENCE_DURATION_MS', warn }),
-    create_response: readBooleanEnv(env.VOX_VAD_CREATE_RESPONSE, true, { name: 'VOX_VAD_CREATE_RESPONSE', warn }),
+    create_response: readBooleanEnv(env.VOX_VAD_CREATE_RESPONSE, defaultCreateResponse, { name: 'VOX_VAD_CREATE_RESPONSE', warn }),
     interrupt_response: readBooleanEnv(env.VOX_VAD_INTERRUPT_RESPONSE, false, { name: 'VOX_VAD_INTERRUPT_RESPONSE', warn }),
   };
 }

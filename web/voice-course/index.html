@@ -888,6 +888,17 @@
       turns: [],
       assistantDraft: "",
       assistantDraftIndex: null,
+      responseActive: false,
+      pendingResponseCreate: false,
+      responseWatchdogTimer: null,
+      pendingInputCommitTimer: null,
+      inputFallbackResponded: false,
+      inputCommitDuringAssistantOutput: false,
+      inputCommitEchoText: "",
+      assistantOutputActive: false,
+      lastAssistantText: "",
+      serverCreatesResponses: false,
+      realtimeEvents: [],
       pendingRecording: null,
       authExpiredHandling: false,
       stoppingCall: false,
@@ -1013,6 +1024,17 @@
       state.recordingCapReached = false;
       state.assistantDraft = "";
       state.assistantDraftIndex = null;
+      state.responseActive = false;
+      state.pendingResponseCreate = false;
+      clearResponseWatchdog();
+      clearInputCommitFallback();
+      state.inputFallbackResponded = false;
+      state.inputCommitDuringAssistantOutput = false;
+      state.inputCommitEchoText = "";
+      state.assistantOutputActive = false;
+      state.lastAssistantText = "";
+      state.serverCreatesResponses = false;
+      state.realtimeEvents = [];
       // Seed the transcript before flipping the call state so the learner shell never flashes empty.
       state.turns = [];
       addTurn("system", "Session started. Vox will begin conservatively.");
@@ -1044,6 +1066,7 @@
         state.dc = state.pc.createDataChannel("oai-events");
         state.dc.onopen = () => {
           els.transportState.textContent = "Listening";
+          flushPendingResponseCreate();
         };
         state.dc.onmessage = (event) => handleRealtimeEvent(event.data);
         state.dc.onerror = () => {
@@ -1059,12 +1082,13 @@
             "Content-Type": "application/json",
             ...authHeaders()
           },
-          body: JSON.stringify({ session_id: state.sessionId })
+          body: JSON.stringify({ session_id: state.sessionId, client_response_create: true })
         });
         const tokenPayload = await tokenResp.json().catch(() => ({}));
         if (!tokenResp.ok) {
           throw new Error(tokenPayload.error || `voice session HTTP ${tokenResp.status}`);
         }
+        state.serverCreatesResponses = tokenPayload.vox_server_creates_responses === true;
         const ephemeralKey = tokenPayload.value || tokenPayload.client_secret?.value;
         if (!ephemeralKey) throw new Error("missing Realtime client secret");
 
@@ -1139,6 +1163,15 @@
       state.dc = null;
       state.pc = null;
       state.remoteStream = null;
+      state.responseActive = false;
+      state.pendingResponseCreate = false;
+      clearResponseWatchdog();
+      clearInputCommitFallback();
+      state.inputFallbackResponded = false;
+      state.inputCommitDuringAssistantOutput = false;
+      state.inputCommitEchoText = "";
+      state.assistantOutputActive = false;
+      state.lastAssistantText = "";
       els.remoteAudio.srcObject = null;
     }
 
@@ -1252,6 +1285,7 @@
           "X-Vox-Ended-At": recording.endedAt,
           "X-Vox-Duration-Ms": String(recording.durationMs),
           "X-Vox-Transcript": recording.transcript,
+          "X-Vox-Events": recording.events,
           ...authHeaders()
         },
         body: recording.blob
@@ -1283,6 +1317,7 @@
         endedAt,
         durationMs: state.startedMs ? Date.now() - state.startedMs : "",
         transcript: recordingTranscriptHeader(),
+        events: recordingEventsHeader(),
         partial: state.recordingCapReached
       };
     }
@@ -1290,12 +1325,23 @@
     function recordingTranscriptHeader() {
       let turns = state.turns.slice(-40).map((turn) => ({
         role: turn.role,
-        text: String(turn.text || "").slice(0, 500)
+        text: String(turn.text || "").slice(0, 500),
+        ts: turn.ts || null
       }));
       let encoded = encodeURIComponent(JSON.stringify(turns));
       while (encoded.length > 6000 && turns.length > 1) {
         turns = turns.slice(1);
         encoded = encodeURIComponent(JSON.stringify(turns));
+      }
+      return encoded;
+    }
+
+    function recordingEventsHeader() {
+      let events = state.realtimeEvents.slice(-120);
+      let encoded = encodeURIComponent(JSON.stringify(events));
+      while (encoded.length > 6000 && events.length > 1) {
+        events = events.slice(1);
+        encoded = encodeURIComponent(JSON.stringify(events));
       }
       return encoded;
     }
@@ -1333,10 +1379,16 @@
     function handleRealtimeEvent(raw) {
       let event;
       try { event = JSON.parse(raw); } catch { return; }
+      recordRealtimeEvent(event);
       switch (event.type) {
         case "response.created":
+          state.responseActive = true;
+          state.assistantOutputActive = true;
+          if (!state.inputCommitDuringAssistantOutput) state.inputCommitEchoText = "";
           state.assistantDraft = "";
           state.assistantDraftIndex = null;
+          state.lastAssistantText = "";
+          startResponseWatchdog();
           setPhase("live");
           break;
         case "input_audio_buffer.speech_started":
@@ -1352,20 +1404,77 @@
         case "response.output_text.done":
           finalizeAssistant(event.transcript || event.text || state.assistantDraft);
           break;
+        case "input_audio_buffer.committed":
+          state.inputCommitDuringAssistantOutput = state.assistantOutputActive;
+          state.inputCommitEchoText = state.inputCommitDuringAssistantOutput
+            ? (state.assistantDraft || state.lastAssistantText)
+            : "";
+          scheduleInputCommitFallback();
+          break;
         case "conversation.item.input_audio_transcription.completed":
-          if (event.transcript) addTurn("user", event.transcript);
+          {
+            const transcript = typeof event.transcript === "string" ? event.transcript : "";
+            const fallbackAlreadyResponded = state.inputFallbackResponded;
+            clearInputCommitFallback();
+            state.inputFallbackResponded = false;
+            if (shouldIgnoreInputTranscript(transcript)) {
+              if (fallbackAlreadyResponded) state.pendingResponseCreate = false;
+              const emptyLearnerCommit = !transcript.trim() && !state.inputCommitDuringAssistantOutput;
+              state.inputCommitDuringAssistantOutput = false;
+              state.inputCommitEchoText = "";
+              if (emptyLearnerCommit && !fallbackAlreadyResponded && !state.serverCreatesResponses) {
+                requestResponseCreate();
+              }
+              if (transcript.trim()) {
+                recordRealtimeEvent({
+                  type: "vox.input_ignored",
+                  message: "assistant echo guard",
+                  text: transcript
+                });
+              }
+              break;
+            }
+            addTurn("user", transcript);
+            state.inputCommitDuringAssistantOutput = false;
+            state.inputCommitEchoText = "";
+            if (!fallbackAlreadyResponded && !state.serverCreatesResponses) requestResponseCreate();
+          }
           break;
         case "response.output_item.done":
           if (event.item?.type === "function_call") handleFunctionCall(event.item);
           break;
         case "response.done":
+          state.responseActive = false;
+          state.assistantOutputActive = false;
+          clearResponseWatchdog();
+          els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
+          flushPendingResponseCreate();
+          break;
         case "response.output_audio.done":
         case "response.audio.done":
+          state.assistantOutputActive = false;
           els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
           break;
         case "error":
-          addTurn("system", event.error?.message || "Realtime error");
-          showError(event.error?.message || "Realtime error");
+          {
+            const message = event.error?.message || "Realtime error";
+            if (/active response in progress/i.test(message)) {
+              recordRealtimeEvent({ type: "vox.response_create_deferred", message });
+              deferResponseCreateForActiveResponse();
+              break;
+            }
+            state.assistantOutputActive = false;
+            settleAssistantDraft();
+            if (state.responseActive) {
+              const resumePending = state.pendingResponseCreate;
+              state.responseActive = false;
+              clearResponseWatchdog();
+              state.pendingResponseCreate = false;
+              if (resumePending) setTimeout(requestResponseCreate, 250);
+            }
+            addTurn("system", message);
+            showError(message);
+          }
           break;
         default:
           break;
@@ -1382,7 +1491,7 @@
           output
         }
       });
-      sendEvent({ type: "response.create" });
+      requestResponseCreate();
     }
 
     async function callBridgeTool(name, argsString) {
@@ -1408,6 +1517,120 @@
       state.dc.send(JSON.stringify(obj));
     }
 
+    function requestResponseCreate() {
+      if (state.dc?.readyState !== "open") {
+        state.pendingResponseCreate = true;
+        return;
+      }
+      if (state.responseActive) {
+        state.pendingResponseCreate = true;
+        return;
+      }
+      state.pendingResponseCreate = false;
+      clearInputCommitFallback();
+      state.responseActive = true;
+      startResponseWatchdog();
+      sendEvent({ type: "response.create" });
+    }
+
+    function flushPendingResponseCreate() {
+      state.responseActive = false;
+      clearResponseWatchdog();
+      if (!state.pendingResponseCreate) return;
+      requestResponseCreate();
+    }
+
+    function deferResponseCreateForActiveResponse() {
+      state.responseActive = true;
+      state.pendingResponseCreate = true;
+      startResponseWatchdog();
+    }
+
+    function startResponseWatchdog() {
+      clearResponseWatchdog();
+      state.responseWatchdogTimer = setTimeout(() => {
+        if (!state.responseActive) return;
+        state.responseActive = false;
+        state.assistantOutputActive = false;
+        recordRealtimeEvent({ type: "vox.response_watchdog", message: "response.done timeout" });
+        flushPendingResponseCreate();
+      }, 30000);
+    }
+
+    function clearResponseWatchdog() {
+      if (!state.responseWatchdogTimer) return;
+      clearTimeout(state.responseWatchdogTimer);
+      state.responseWatchdogTimer = null;
+    }
+
+    function scheduleInputCommitFallback() {
+      clearInputCommitFallback();
+      state.inputFallbackResponded = false;
+      if (state.serverCreatesResponses) return;
+      state.pendingInputCommitTimer = setTimeout(() => {
+        state.pendingInputCommitTimer = null;
+        if (state.dc?.readyState !== "open") return;
+        if (state.inputCommitDuringAssistantOutput) return;
+        if (state.assistantOutputActive || state.responseActive) {
+          state.inputFallbackResponded = true;
+          state.pendingResponseCreate = true;
+          return;
+        }
+        state.inputFallbackResponded = true;
+        requestResponseCreate();
+      }, 1800);
+    }
+
+    function clearInputCommitFallback() {
+      if (!state.pendingInputCommitTimer) return;
+      clearTimeout(state.pendingInputCommitTimer);
+      state.pendingInputCommitTimer = null;
+    }
+
+    function recordRealtimeEvent(event) {
+      if (typeof event?.type !== "string" || !event.type) return;
+      const entry = {
+        type: event.type.slice(0, 96),
+        ts: Date.now()
+      };
+      if (event.type === "response.audio.delta" || event.type === "response.output_audio.delta") return;
+      const text = event.transcript || event.text || event.delta;
+      if (typeof text === "string" && text) entry.text = text.slice(0, 1000);
+      const message = event.error?.message || event.message;
+      if (typeof message === "string" && message) entry.message = message.slice(0, 1000);
+      state.realtimeEvents.push(entry);
+      if (state.realtimeEvents.length > 300) state.realtimeEvents = state.realtimeEvents.slice(-300);
+    }
+
+    function shouldIgnoreInputTranscript(transcript) {
+      const text = String(transcript || "").trim();
+      if (!text) return true;
+      const assistantText = state.inputCommitEchoText || state.assistantDraft || state.lastAssistantText;
+      if ((state.assistantOutputActive || state.inputCommitDuringAssistantOutput) && isLikelyAssistantEcho(text, assistantText)) return true;
+      return false;
+    }
+
+    function isLikelyAssistantEcho(inputValue, assistantValue) {
+      const input = normalizeSpeechText(inputValue);
+      const assistant = normalizeSpeechText(assistantValue);
+      if (!input || !assistant) return false;
+      const minLength = hasCompactSpeechScript(input) ? 5 : 12;
+      if (input.length < minLength) return false;
+      return assistant === input || assistant.startsWith(input);
+    }
+
+    function hasCompactSpeechScript(value) {
+      return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gurmukhi}\p{Script=Gujarati}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Sinhala}]/u.test(value);
+    }
+
+    function normalizeSpeechText(value) {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
     function updateAssistantDraft(delta) {
       state.assistantDraft += delta;
       const draftIndex = state.assistantDraftIndex;
@@ -1416,9 +1639,13 @@
         draftTurn.text = state.assistantDraft;
       } else {
         state.assistantDraftIndex = state.turns.length;
-        state.turns.push({ role: "assistant", text: state.assistantDraft, draft: true });
+        state.turns.push({ role: "assistant", text: state.assistantDraft, draft: true, ts: Date.now() });
       }
       renderTurns();
+    }
+
+    function settleAssistantDraft() {
+      finalizeAssistant(state.assistantDraft);
     }
 
     function finalizeAssistant(text) {
@@ -1435,9 +1662,11 @@
       if (draftTurn?.role === "assistant" && draftTurn.draft) {
         draftTurn.text = clean;
         delete draftTurn.draft;
+        if (!draftTurn.ts) draftTurn.ts = Date.now();
       } else {
-        state.turns.push({ role: "assistant", text: clean });
+        state.turns.push({ role: "assistant", text: clean, ts: Date.now() });
       }
+      state.lastAssistantText = clean;
       state.assistantDraft = "";
       state.assistantDraftIndex = null;
       renderTurns();
@@ -1445,7 +1674,7 @@
 
     function addTurn(role, text) {
       if (!text) return;
-      state.turns.push({ role, text });
+      state.turns.push({ role, text, ts: Date.now() });
       renderTurns();
     }
 

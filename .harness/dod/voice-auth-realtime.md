@@ -56,3 +56,39 @@ TF impact: not-needed — final push-review cleanup limits transcript re-renderi
 TF impact: not-needed — last review nits only remove redundant guards and clarify startup render order; user-visible Realtime behavior is unchanged.
 
 TF impact: not-needed — Realtime turn-taking now waits for learner speech and uses less aggressive VAD defaults, preserving the documented no-login voice and recording behavior while reducing self-interrupting fragments.
+
+TF impact: not-needed — echo-guarding assistant audio and saving transcript/event sidecars are debugging and reliability improvements within the existing Realtime voice-and-recording promise.
+
+TF impact: not-needed — review fixes preserve the same Realtime voice-and-recording promise while making echo filtering less aggressive and debug subtitles well-formed.
+
+TF impact: not-needed — final review fixes keep the same promise while adding a non-transcription fallback and preventing duplicate response.create frames.
+
+TF impact: not-needed — echo matching is narrowed to current assistant text and fallback responses avoid duplicate creates; the public voice-and-recording promise is unchanged.
+
+TF impact: not-needed — final push-review cleanup only tightens error recovery, fallback queuing, and debug payload limits for the same voice-and-recording behavior.
+
+TF impact: not-needed — last review cleanup removes stale echo state and avoids generic error teardown; user-facing behavior remains the same reliability fix.
+
+TF impact: not-needed — latest push-review cleanup only narrows error recovery and sidecar cleanup behavior; the user-facing voice-and-recording promise is unchanged.
+
+TF impact: not-needed — final push-review cleanup keeps the same promise while preserving queued-response recovery and failed sidecar write cleanup without filtering learner repetitions after the assistant finishes.
+
+TF impact: not-needed — review-driven edge fixes broaden echo matching scripts, keep response requests queued until the data channel opens, and prevent subtitle cues from collapsing on short duration metadata.
+
+TF impact: not-needed — final response watchdog and VAD auto-response guards only harden the same voice reliability/debugging behavior without changing the public product promise.
+
+TF impact: not-needed — final review cleanup narrows echo suppression to active assistant audio so learner repetitions are preserved while keeping the same reliability/debugging promise.
+
+TF impact: not-needed — compatibility cleanup keeps legacy Realtime clients on server-created responses while new clients explicitly opt into manual response creation for the same reliability behavior.
+
+TF impact: not-needed — final double-response guard only prevents manual response creation when the server is configured to create responses automatically.
+
+TF impact: not-needed — final echo-guard cleanup removes dead retry state and scopes fallback suppression to audio committed during assistant speech.
+
+TF impact: not-needed — pre-push review cleanup clears stale assistant drafts on terminal Realtime errors and limits the client response hint to a single Vox-owned boolean.
+
+TF impact: not-needed — final review cleanup skips raw audio deltas in debug events and preserves partial assistant text when a recoverable Realtime error occurs.
+
+TF impact: not-needed — commit-time echo reference is retained across fallback-created responses so late transcriptions can still be matched against the assistant audio that caused the commit.
+
+TF impact: not-needed — final turn-state cleanup keeps empty learner commits from dead-ending manual response creation and only preserves echo references while a late transcription is pending.

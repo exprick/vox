@@ -51,13 +51,16 @@ test('public auth config exposes only browser-safe fields', (t) => {
 });
 
 test('realtime turn detection defaults avoid self-interrupting short fragments', () => {
-  const cfg = realtimeTurnDetectionConfig({}, { warn: () => {} });
+  const cfg = realtimeTurnDetectionConfig({}, { warn: () => {}, defaultCreateResponse: false });
   assert.equal(cfg.type, 'server_vad');
   assert.equal(cfg.threshold, 0.65);
   assert.equal(cfg.prefix_padding_ms, 500);
   assert.equal(cfg.silence_duration_ms, 900);
-  assert.equal(cfg.create_response, true);
+  assert.equal(cfg.create_response, false);
   assert.equal(cfg.interrupt_response, false);
+
+  const compatibilityCfg = realtimeTurnDetectionConfig({}, { warn: () => {} });
+  assert.equal(compatibilityCfg.create_response, true);
 });
 
 test('realtime turn detection env overrides are bounded and explicit', () => {
@@ -112,7 +115,94 @@ test('web voice course waits for learner speech before starting a realtime respo
   assert.equal(html.includes('Start the session with one short friendly greeting'), false);
 });
 
-test('recordings save audio and metadata without returning raw bytes in list output', async (t) => {
+test('realtime clients gate response.create through active-response state', async () => {
+  const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
+  assert.match(html, /responseActive:\s*false/);
+  assert.match(html, /pendingResponseCreate:\s*false/);
+  assert.match(html, /inputCommitDuringAssistantOutput:\s*false/);
+  assert.match(html, /inputCommitEchoText:\s*""/);
+  assert.match(html, /function deferResponseCreateForActiveResponse\(\)/);
+  assert.match(html, /function scheduleInputCommitFallback\(\)/);
+  assert.match(html, /function requestResponseCreate\(\)/);
+  assert.match(html, /state\.dc\.onopen = \(\) => \{[\s\S]*flushPendingResponseCreate\(\);/);
+  const webTranscriptionCase = html.slice(html.indexOf('case "conversation.item.input_audio_transcription.completed"'), html.indexOf('case "response.output_item.done"'));
+  assert.match(webTranscriptionCase, /requestResponseCreate\(\);/);
+  const webCommitCase = html.slice(html.indexOf('case "input_audio_buffer.committed"'), html.indexOf('case "conversation.item.input_audio_transcription.completed"'));
+  assert.match(webCommitCase, /scheduleInputCommitFallback\(\);/);
+  assert.match(webCommitCase, /inputCommitEchoText[\s\S]*assistantDraft/);
+  const webRequestCreate = html.slice(html.indexOf('function requestResponseCreate()'), html.indexOf('function flushPendingResponseCreate()'));
+  assert.match(webRequestCreate, /state\.pendingResponseCreate = true;[\s\S]*return;/);
+  assert.match(webRequestCreate, /state\.responseActive = true;[\s\S]*sendEvent\(\{ type: "response\.create" \}\);/);
+  const webErrorCase = html.slice(html.indexOf('case "error"'), html.indexOf('default:', html.indexOf('case "error"')));
+  assert.match(webErrorCase, /active response in progress[\s\S]*deferResponseCreateForActiveResponse\(\);/);
+  assert.match(webErrorCase, /settleAssistantDraft\(\);/);
+  assert.match(webErrorCase, /resumePending[\s\S]*setTimeout\(requestResponseCreate, 250\)/);
+  assert.match(html, /response\.audio\.delta[\s\S]*return;/);
+  const webFunctionCall = html.slice(html.indexOf('async function handleFunctionCall'), html.indexOf('async function callBridgeTool'));
+  assert.match(webFunctionCall, /requestResponseCreate\(\);/);
+  assert.equal(webFunctionCall.includes('sendEvent({ type: "response.create" });'), false);
+
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+  assert.match(swift, /private var responseActive: Bool = false/);
+  assert.match(swift, /private var pendingResponseCreate: Bool = false/);
+  assert.match(swift, /private var inputCommitFallbackScheduled: Bool = false/);
+  assert.match(swift, /private var inputCommitDuringAssistantOutput: Bool = false/);
+  assert.match(swift, /private var inputCommitEchoText: String = ""/);
+  assert.match(swift, /private func deferResponseCreateForActiveResponse\(\)/);
+  assert.match(swift, /private func scheduleInputCommitFallback\(\)/);
+  assert.match(swift, /private func requestResponseCreate\(\)/);
+  const swiftTranscriptionCase = swift.slice(swift.indexOf('case "conversation.item.input_audio_transcription.completed"'), swift.indexOf('case "response.output_item.done"'));
+  assert.match(swiftTranscriptionCase, /requestResponseCreate\(\)/);
+  const swiftCommitCase = swift.slice(swift.indexOf('case "input_audio_buffer.committed"'), swift.indexOf('case "conversation.item.input_audio_transcription.completed"'));
+  assert.match(swiftCommitCase, /scheduleInputCommitFallback\(\)/);
+  assert.match(swiftCommitCase, /inputCommitEchoText[\s\S]*assistantBuffer/);
+  const swiftRequestCreate = swift.slice(swift.indexOf('private func requestResponseCreate()'), swift.indexOf('private func completeResponse()'));
+  assert.match(swiftRequestCreate, /pendingResponseCreate = true[\s\S]*return/);
+  assert.match(swiftRequestCreate, /responseActive = true[\s\S]*sendDataChannelJSON\(\["type": "response\.create"\]\)/);
+  assert.match(swift, /if isOpen, self\.pendingResponseCreate, !self\.responseActive \{[\s\S]*self\.requestResponseCreate\(\)/);
+  const swiftErrorCase = swift.slice(swift.indexOf('case "error"'), swift.indexOf('default:', swift.indexOf('case "error"')));
+  assert.match(swiftErrorCase, /active response in progress[\s\S]*deferResponseCreateForActiveResponse\(\)/);
+  assert.match(swiftErrorCase, /settleAssistantBuffer\(\)/);
+  assert.match(swiftErrorCase, /resumePending[\s\S]*asyncAfter\(deadline: \.now\(\) \+ 0\.25\)/);
+  const swiftFunctionCall = swift.slice(swift.indexOf('private func sendFunctionCallOutput'), swift.indexOf('// MARK: - external triggers'));
+  assert.match(swiftFunctionCall, /requestResponseCreate\(\)/);
+  assert.equal(swiftFunctionCall.includes('sendDataChannelJSON(["type": "response.create"])'), false);
+});
+
+test('realtime clients suppress assistant echo transcripts before creating user turns', async () => {
+  const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
+  assert.match(html, /function shouldIgnoreInputTranscript\(transcript\)/);
+  assert.match(html, /state\.assistantOutputActive \|\| state\.inputCommitDuringAssistantOutput/);
+  assert.match(html, /function hasCompactSpeechScript\(value\)/);
+  assert.match(html, /Script=Thai/);
+  assert.match(html, /Script=Arabic/);
+  assert.match(html, /Script=Devanagari/);
+  const webResponseCreated = html.slice(html.indexOf('case "response.created"'), html.indexOf('case "input_audio_buffer.speech_started"'));
+  assert.match(webResponseCreated, /lastAssistantText = ""/);
+  assert.doesNotMatch(html, /function isLikelyEchoFragment\(value\)/);
+  assert.match(html, /vox\.input_ignored/);
+  assert.match(html, /X-Vox-Events/);
+  assert.match(html, /vox_server_creates_responses/);
+
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+  assert.match(swift, /private func shouldIgnoreInputTranscript\(_ transcript: String\) -> Bool/);
+  assert.match(swift, /assistantOutputActive \|\| inputCommitDuringAssistantOutput/);
+  assert.match(swift, /private func containsCompactSpeechScript/);
+  assert.match(swift, /0x0E00\.\.\.0x0E7F/);
+  assert.match(swift, /0x0600\.\.\.0x06FF/);
+  assert.match(swift, /0x0900\.\.\.0x097F/);
+  const swiftResponseCreated = swift.slice(swift.indexOf('case "response.created"'), swift.indexOf('case "response.audio_transcript.delta"'));
+  assert.match(swiftResponseCreated, /lastAssistantText = ""/);
+  assert.doesNotMatch(swift, /private func isLikelyEchoFragment\(_ value: String\) -> Bool/);
+  assert.match(swift, /ignored input transcript as assistant echo/);
+  assert.match(swift, /vox_server_creates_responses/);
+
+  const voiceSource = await fs.readFile(new URL('../src/bridge/voice.mjs', import.meta.url), 'utf8');
+  assert.match(voiceSource, /vox_server_creates_responses/);
+  assert.doesNotMatch(voiceSource, /vox_turn_detection:\s*session\.audio\.input\.turn_detection/);
+});
+
+test('recordings save audio, metadata, transcripts, captions, and events without returning raw bytes in list output', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vox-recordings-test-'));
   t.after(withEnv({ VOX_RECORDINGS_DIR: dir }));
   const user = { id: 'u_123', email: 'rick@exp.game', provider: 'test' };
@@ -124,20 +214,45 @@ test('recordings save audio and metadata without returning raw bytes in list out
     startedAt: '2026-05-18T00:00:00.000Z',
     endedAt: '2026-05-18T00:00:01.000Z',
     durationMs: 1000,
-    transcript: [{ role: 'user', text: 'hello' }],
+    transcript: [{ role: 'user', text: 'hello', ts: 1000 }, { role: 'assistant', text: 'hi --> there\nfriend', ts: 1500 }],
+    events: [
+      { type: 'conversation.item.input_audio_transcription.completed', text: 'hello', ts: 1000 },
+      { type: '  ', text: 'dropped', ts: 2000 },
+    ],
   });
   assert.equal(result.bytes, 11);
   assert.match(result.audio_file, /\.webm$/);
+  assert.match(result.transcript_file, /\.transcript\.json$/);
+  assert.match(result.captions_file, /\.vtt$/);
+  assert.match(result.subtitles_file, /\.srt$/);
+  assert.match(result.events_file, /\.events\.json$/);
+  assert.equal(result.transcript_count, 2);
+  assert.equal(result.realtime_events_count, 1);
+  const recordingsSource = await fs.readFile(new URL('../src/bridge/recordings.mjs', import.meta.url), 'utf8');
+  assert.match(recordingsSource, /writeError\.code !== 'EEXIST'/);
+  assert.match(recordingsSource, /createdPaths\.push\(file\)/);
 
   const files = await fs.readdir(dir);
   assert.equal(files.filter((file) => file.endsWith('.webm')).length, 1);
-  assert.equal(files.filter((file) => file.endsWith('.json')).length, 1);
+  assert.equal(files.filter((file) => file.endsWith('.json')).length, 3);
+  assert.equal(files.filter((file) => file.endsWith('.txt')).length, 1);
+  assert.equal(files.filter((file) => file.endsWith('.vtt')).length, 1);
+  assert.equal(files.filter((file) => file.endsWith('.srt')).length, 1);
+  const transcriptText = await fs.readFile(path.join(dir, result.transcript_text_file), 'utf8');
+  assert.match(transcriptText, /\[user\] hello/);
+  const captions = await fs.readFile(path.join(dir, result.captions_file), 'utf8');
+  assert.match(captions, /^WEBVTT/);
+  assert.match(captions, /assistant: hi -> there friend/);
+  assert.doesNotMatch(captions, /hi --> there/);
+  assert.match(recordingsSource, /transcriptSpanMs \+ 500/);
+  const events = JSON.parse(await fs.readFile(path.join(dir, result.events_file), 'utf8'));
+  assert.equal(events[0].type, 'conversation.item.input_audio_transcription.completed');
 
   const list = await listRecordings({ user, limit: 10 });
   assert.equal(list.length, 1);
   assert.equal(list[0].audio_file, result.audio_file);
   assert.equal(list[0].bytes, 11);
-  assert.deepEqual(list[0].transcript, [{ role: 'user', text: 'hello' }]);
+  assert.deepEqual(list[0].transcript, [{ role: 'user', text: 'hello', ts: 1000 }, { role: 'assistant', text: 'hi --> there\nfriend', ts: 1500 }]);
   assert.equal(Object.hasOwn(list[0], 'audio_bytes'), false);
 });
 

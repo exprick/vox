@@ -53,6 +53,16 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private var dataChannel: RTCDataChannel?
     private var audioTrack: RTCAudioTrack?
     private var assistantBuffer: String = ""
+    private var responseActive: Bool = false
+    private var pendingResponseCreate: Bool = false
+    private var responseWatchdogGeneration: Int = 0
+    private var inputCommitFallbackGeneration: Int = 0
+    private var inputCommitFallbackScheduled: Bool = false
+    private var inputCommitFallbackResponded: Bool = false
+    private var inputCommitDuringAssistantOutput: Bool = false
+    private var inputCommitEchoText: String = ""
+    private var assistantOutputActive: Bool = false
+    private var serverCreatesResponses: Bool = false
 
     /// Bumped on disconnect / new connect attempt. Lets a connect() resumed
     /// from suspension see that the user has moved on, and abort instead of
@@ -177,7 +187,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         var req = URLRequest(url: URL(string: "\(bridgeBase)/voice/session")!)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = "{}".data(using: .utf8)
+        req.httpBody = #"{"client_response_create":true}"#.data(using: .utf8)
         req.timeoutInterval = 10
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
@@ -186,6 +196,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             ])
         }
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        serverCreatesResponses = (json?["vox_server_creates_responses"] as? Bool) == true
         let directValue = json?["value"] as? String
         let secret = json?["client_secret"] as? [String: Any]
         let nestedValue = secret?["value"] as? String
@@ -293,6 +304,18 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         dataChannel = nil
         audioTrack = nil
         dataChannelOpen = false
+        responseActive = false
+        pendingResponseCreate = false
+        responseWatchdogGeneration += 1
+        inputCommitFallbackGeneration += 1
+        inputCommitFallbackScheduled = false
+        inputCommitFallbackResponded = false
+        inputCommitDuringAssistantOutput = false
+        inputCommitEchoText = ""
+        assistantBuffer = ""
+        assistantOutputActive = false
+        lastAssistantText = ""
+        serverCreatesResponses = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -304,9 +327,15 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
 
         switch type {
         case "response.created":
+            responseActive = true
+            assistantOutputActive = true
             isAssistantSpeaking = true
+            if !inputCommitDuringAssistantOutput {
+                inputCommitEchoText = ""
+            }
             assistantBuffer = ""
             lastAssistantText = ""
+            startResponseWatchdog()
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 assistantBuffer += delta
@@ -316,11 +345,41 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             // Final assistant text — push to bridge so get_app_state can see it.
             postTranscriptToBridge(role: "assistant", text: assistantBuffer)
         case "response.audio.done", "response.output_audio.done", "response.done":
+            assistantOutputActive = false
+            if type == "response.done" {
+                completeResponse()
+            }
             isAssistantSpeaking = false
+        case "input_audio_buffer.committed":
+            inputCommitDuringAssistantOutput = assistantOutputActive
+            inputCommitEchoText = inputCommitDuringAssistantOutput ? (assistantBuffer.isEmpty ? lastAssistantText : assistantBuffer) : ""
+            scheduleInputCommitFallback()
         case "conversation.item.input_audio_transcription.completed":
-            if let t = json["transcript"] as? String {
-                lastUserUtterance = t
-                postTranscriptToBridge(role: "user", text: t)
+            let transcript = (json["transcript"] as? String) ?? ""
+            let fallbackAlreadyResponded = inputCommitFallbackResponded
+            clearInputCommitFallback()
+            inputCommitFallbackResponded = false
+            if shouldIgnoreInputTranscript(transcript) {
+                if fallbackAlreadyResponded {
+                    pendingResponseCreate = false
+                }
+                let emptyLearnerCommit = transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !inputCommitDuringAssistantOutput
+                inputCommitDuringAssistantOutput = false
+                inputCommitEchoText = ""
+                if emptyLearnerCommit && !fallbackAlreadyResponded && !serverCreatesResponses {
+                    requestResponseCreate()
+                }
+                if !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    log("ignored input transcript as assistant echo: \(transcript.prefix(80))")
+                }
+                return
+            }
+            lastUserUtterance = transcript
+            postTranscriptToBridge(role: "user", text: transcript)
+            inputCommitDuringAssistantOutput = false
+            inputCommitEchoText = ""
+            if !fallbackAlreadyResponded && !serverCreatesResponses {
+                requestResponseCreate()
             }
         case "response.output_item.done":
             // Function-calling: when the model decides to call a tool the item
@@ -336,6 +395,24 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             }
         case "error":
             if let err = json["error"] as? [String: Any], let msg = err["message"] as? String {
+                if msg.range(of: "active response in progress", options: .caseInsensitive) != nil {
+                    log("deferred response.create while active response in progress")
+                    deferResponseCreateForActiveResponse()
+                    return
+                }
+                if responseActive || assistantOutputActive {
+                    let resumePending = pendingResponseCreate
+                    assistantOutputActive = false
+                    settleAssistantBuffer()
+                    responseActive = false
+                    pendingResponseCreate = false
+                    responseWatchdogGeneration += 1
+                    if resumePending {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                            self?.requestResponseCreate()
+                        }
+                    }
+                }
                 lastError = msg
                 log("server error: \(msg)")
             }
@@ -383,7 +460,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             ],
         ])
         // Tell the model to continue (it now has a tool result to react to).
-        sendDataChannelJSON(["type": "response.create"])
+        requestResponseCreate()
     }
 
     // MARK: - external triggers (bridge → iPhone push patterns)
@@ -392,10 +469,9 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     /// async tool (codex) finishes. We push a user-style message into the
     /// conversation and request a response so the model voice-reports it.
     ///
-    /// If a response is already in progress (model is mid-turn), only enqueue
-    /// the item — `response.create` would error with
-    /// "Conversation already has an active response in progress". The model
-    /// will pick up the queued item on its next response cycle automatically.
+    /// If a response is already in progress (model is mid-turn), enqueue the
+    /// item and defer `response.create` until `response.done`; otherwise OpenAI
+    /// returns "Conversation already has an active response in progress".
     func injectUserMessage(_ text: String) {
         log("injectUserMessage len=\(text.count) speaking=\(isAssistantSpeaking)")
         sendDataChannelJSON([
@@ -406,9 +482,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
                 "content": [["type": "input_text", "text": text]],
             ],
         ])
-        if !isAssistantSpeaking {
-            sendDataChannelJSON(["type": "response.create"])
-        }
+        requestResponseCreate()
     }
 
     /// Bridge calls this via PollClient `update_session_instructions` after
@@ -426,6 +500,162 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
         let buf = RTCDataBuffer(data: data, isBinary: false)
         dc.sendData(buf)
+    }
+
+    private func requestResponseCreate() {
+        guard dataChannel?.readyState == .open else {
+            pendingResponseCreate = true
+            return
+        }
+        if responseActive {
+            pendingResponseCreate = true
+            return
+        }
+        pendingResponseCreate = false
+        clearInputCommitFallback()
+        responseActive = true
+        startResponseWatchdog()
+        sendDataChannelJSON(["type": "response.create"])
+    }
+
+    private func completeResponse() {
+        responseActive = false
+        responseWatchdogGeneration += 1
+        guard pendingResponseCreate else { return }
+        requestResponseCreate()
+    }
+
+    private func deferResponseCreateForActiveResponse() {
+        responseActive = true
+        pendingResponseCreate = true
+        startResponseWatchdog()
+    }
+
+    private func startResponseWatchdog() {
+        responseWatchdogGeneration += 1
+        let generation = responseWatchdogGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self else { return }
+            guard self.responseActive, self.responseWatchdogGeneration == generation else { return }
+            self.responseActive = false
+            self.assistantOutputActive = false
+            self.log("response watchdog: response.done timeout")
+            if self.pendingResponseCreate {
+                self.requestResponseCreate()
+            }
+        }
+    }
+
+    private func scheduleInputCommitFallback() {
+        inputCommitFallbackResponded = false
+        inputCommitFallbackGeneration += 1
+        inputCommitFallbackScheduled = true
+        if serverCreatesResponses {
+            inputCommitFallbackScheduled = false
+            return
+        }
+        let generation = inputCommitFallbackGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            guard let self else { return }
+            guard self.inputCommitFallbackGeneration == generation,
+                  self.inputCommitFallbackScheduled,
+                  self.dataChannel?.readyState == .open else { return }
+            self.inputCommitFallbackScheduled = false
+            if self.inputCommitDuringAssistantOutput { return }
+            if self.assistantOutputActive || self.responseActive {
+                self.inputCommitFallbackResponded = true
+                self.pendingResponseCreate = true
+                return
+            }
+            self.inputCommitFallbackResponded = true
+            self.requestResponseCreate()
+        }
+    }
+
+    private func clearInputCommitFallback() {
+        inputCommitFallbackGeneration += 1
+        inputCommitFallbackScheduled = false
+    }
+
+    private func settleAssistantBuffer() {
+        if !assistantBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            postTranscriptToBridge(role: "assistant", text: assistantBuffer)
+            lastAssistantText = assistantBuffer
+        }
+        assistantBuffer = ""
+        isAssistantSpeaking = false
+    }
+
+    private func shouldIgnoreInputTranscript(_ transcript: String) -> Bool {
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return true }
+        let assistantText = inputCommitEchoText.isEmpty ? (assistantBuffer.isEmpty ? lastAssistantText : assistantBuffer) : inputCommitEchoText
+        if (assistantOutputActive || inputCommitDuringAssistantOutput) &&
+            isLikelyAssistantEcho(text, assistantText) { return true }
+        return false
+    }
+
+    private func isLikelyAssistantEcho(_ inputValue: String, _ assistantValue: String) -> Bool {
+        let input = normalizeSpeechText(inputValue)
+        let assistant = normalizeSpeechText(assistantValue)
+        if input.isEmpty || assistant.isEmpty { return false }
+        let minLength = containsCompactSpeechScript(input) ? 5 : 12
+        if input.count < minLength { return false }
+        return assistant == input || assistant.hasPrefix(input)
+    }
+
+    private func containsCompactSpeechScript(_ value: String) -> Bool {
+        for scalar in value.unicodeScalars {
+            let codepoint = Int(scalar.value)
+            if (0x3400...0x4DBF).contains(codepoint) ||
+                (0x4E00...0x9FFF).contains(codepoint) ||
+                (0xF900...0xFAFF).contains(codepoint) ||
+                (0x20000...0x2A6DF).contains(codepoint) ||
+                (0x2A700...0x2B73F).contains(codepoint) ||
+                (0x2B740...0x2B81F).contains(codepoint) ||
+                (0x2B820...0x2CEAF).contains(codepoint) ||
+                (0x1100...0x11FF).contains(codepoint) ||
+                (0x3130...0x318F).contains(codepoint) ||
+                (0xA960...0xA97F).contains(codepoint) ||
+                (0xD7B0...0xD7FF).contains(codepoint) ||
+                (0x3040...0x30FF).contains(codepoint) ||
+                (0xAC00...0xD7AF).contains(codepoint) ||
+                (0x0E00...0x0E7F).contains(codepoint) ||
+                (0x0E80...0x0EFF).contains(codepoint) ||
+                (0x1000...0x109F).contains(codepoint) ||
+                (0x1780...0x17FF).contains(codepoint) ||
+                (0x0590...0x05FF).contains(codepoint) ||
+                (0x0600...0x06FF).contains(codepoint) ||
+                (0x0750...0x077F).contains(codepoint) ||
+                (0x08A0...0x08FF).contains(codepoint) ||
+                (0xFB50...0xFDFF).contains(codepoint) ||
+                (0xFE70...0xFEFF).contains(codepoint) ||
+                (0x0900...0x097F).contains(codepoint) ||
+                (0x0980...0x09FF).contains(codepoint) ||
+                (0x0A00...0x0A7F).contains(codepoint) ||
+                (0x0A80...0x0AFF).contains(codepoint) ||
+                (0x0B00...0x0B7F).contains(codepoint) ||
+                (0x0B80...0x0BFF).contains(codepoint) ||
+                (0x0C00...0x0C7F).contains(codepoint) ||
+                (0x0C80...0x0CFF).contains(codepoint) ||
+                (0x0D00...0x0D7F).contains(codepoint) ||
+                (0x0D80...0x0DFF).contains(codepoint) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func normalizeSpeechText(_ value: String) -> String {
+        var normalized = ""
+        for scalar in value.lowercased().unicodeScalars {
+            if CharacterSet.alphanumerics.contains(scalar) || CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                normalized.unicodeScalars.append(scalar)
+            } else {
+                normalized.append(" ")
+            }
+        }
+        return normalized.split(separator: " ").joined(separator: " ")
     }
 
     private func postTranscriptToBridge(role: String, text: String) {
@@ -550,6 +780,9 @@ extension RealtimeClientWebRTC: RTCDataChannelDelegate {
         Task { @MainActor in
             self.dataChannelOpen = isOpen
             self.log("data channel state: \(dataChannel.readyState.rawValue) open=\(isOpen)")
+            if isOpen, self.pendingResponseCreate, !self.responseActive {
+                self.requestResponseCreate()
+            }
         }
     }
 
