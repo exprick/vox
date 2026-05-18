@@ -84,6 +84,7 @@ USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. 
   const { session, model, voice } = realtimeSessionConfig({
     instructions,
     clientResponseCreate: opts.clientResponseCreate,
+    manualInputTurns: opts.manualInputTurns === true,
   });
   const turnDetection = session.audio.input.turn_detection;
   const resp = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
@@ -110,6 +111,7 @@ USE THESE PROACTIVELY. If the user asks "what tab am I on", call get_app_state. 
     model,
     voice,
     vox_server_creates_responses: turnDetection?.create_response === true,
+    vox_manual_input_turns: session.audio.input.turn_detection == null,
   };
 }
 
@@ -133,6 +135,7 @@ export function realtimeSessionConfig(opts = {}, env = process.env) {
   const transcriptionLanguage = env.VOX_TRANSCRIPTION_LANGUAGE?.trim();
   if (transcriptionLanguage) transcription.language = transcriptionLanguage;
   const instructions = opts.instructions || VOX_INSTRUCTIONS;
+  const manualInputTurns = opts.manualInputTurns === true;
   const session = {
     type: 'realtime',
     model,
@@ -145,7 +148,7 @@ export function realtimeSessionConfig(opts = {}, env = process.env) {
         format: { type: 'audio/pcm', rate: 24000 },
         noise_reduction: realtimeInputNoiseReductionConfig(env, { warn }),
         transcription,
-        turn_detection: realtimeTurnDetectionConfig(env, {
+        turn_detection: manualInputTurns ? null : realtimeTurnDetectionConfig(env, {
           defaultCreateResponse: opts.clientResponseCreate !== true,
           warn,
         }),

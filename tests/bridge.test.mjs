@@ -83,6 +83,17 @@ test('realtime session config follows OpenAI voice-agent defaults', () => {
   });
 });
 
+test('manual realtime input turns disable server-side turn detection', () => {
+  const { session } = realtimeSessionConfig({
+    instructions: 'Test instructions',
+    clientResponseCreate: true,
+    manualInputTurns: true,
+    warn: () => {},
+  }, {});
+
+  assert.equal(session.audio.input.turn_detection, null);
+});
+
 test('realtime session config keeps explicit deployment overrides bounded', () => {
   const warnings = [];
   const { session, model, voice } = realtimeSessionConfig({
@@ -248,6 +259,29 @@ test('web voice course requests and records browser audio processing for speaker
   assert.match(html, /vox\.mic_audio_processing/);
   assert.doesNotMatch(html, /deviceId/);
   assert.doesNotMatch(html, /groupId/);
+});
+
+test('web voice course uses push-to-talk manual input turns for speaker echo control', async () => {
+  const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
+  const serverSource = await fs.readFile(new URL('../src/bridge/server.mjs', import.meta.url), 'utf8');
+  const voiceSource = await fs.readFile(new URL('../src/bridge/voice.mjs', import.meta.url), 'utf8');
+
+  assert.match(serverSource, /manualInputTurns:\s*body\?\.manual_input_turns === true/);
+  assert.match(voiceSource, /manualInputTurns:\s*opts\.manualInputTurns === true/);
+  assert.match(voiceSource, /turn_detection:\s*manualInputTurns \? null/);
+  assert.match(voiceSource, /vox_manual_input_turns/);
+  assert.match(html, /manual_input_turns:\s*true/);
+  assert.match(html, /state\.manualInputTurns = tokenPayload\.vox_manual_input_turns === true/);
+  assert.match(html, /function beginManualInputTurn\(\)/);
+  assert.match(html, /type:\s*"input_audio_buffer\.clear"/);
+  assert.match(html, /function finishManualInputTurn\(\)/);
+  assert.match(html, /type:\s*"input_audio_buffer\.commit"/);
+  assert.match(html, /function setMicrophoneOpen\(open/);
+  assert.match(html, /track\.enabled = open/);
+  assert.match(html, /ASSISTANT_PLAYBACK_COOLDOWN_MS/);
+  assert.match(html, /return "Start speaking"/);
+  assert.match(html, /return "Send"/);
+  assert.match(html, /id="endCallButton"/);
 });
 
 test('web root redirects to the canonical voice app URL without client-side redirect', async () => {

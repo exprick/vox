@@ -286,6 +286,16 @@
       background: var(--coral);
     }
 
+    .end-call-btn {
+      min-height: 34px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
+
+    .end-call-btn[hidden] {
+      display: none;
+    }
+
     .pulse {
       width: 12px;
       height: 12px;
@@ -856,6 +866,16 @@
       animation: micPulse 1.6s ease-out infinite;
     }
 
+    .public-learner-shell .end-call-btn {
+      min-height: 30px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(255, 246, 236, 0.28);
+      color: rgba(39, 20, 15, 0.56);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
     @keyframes micPulse {
       0% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0.30); }
       72% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 18px rgba(180, 66, 53, 0); }
@@ -991,6 +1011,7 @@
             <span>Start live voice</span>
           </button>
           <div class="meta">
+            <button class="secondary-btn end-call-btn" type="button" id="endCallButton" hidden>End</button>
             <small id="recordingState">Recording starts with every session.</small>
             <small id="transportState">WebRTC idle</small>
           </div>
@@ -1027,6 +1048,7 @@
       subtitleToggle: document.getElementById("subtitleToggle"),
       subtitleStatus: document.getElementById("subtitleStatus"),
       callButton: document.getElementById("callButton"),
+      endCallButton: document.getElementById("endCallButton"),
       turns: document.getElementById("turns"),
       remoteAudio: document.getElementById("remoteAudio"),
       recordingState: document.getElementById("recordingState"),
@@ -1047,6 +1069,7 @@
     const SUBTITLE_RETRY_AFTER_MS = 15000;
     const SUBTITLE_MAX_TRIES = 2;
     const RECORDING_HEADER_MAX_CHARS = 6000;
+    const ASSISTANT_PLAYBACK_COOLDOWN_MS = 1000;
     const MIC_AUDIO_CONSTRAINTS = [
       {
         echoCancellation: { ideal: "all" },
@@ -1100,6 +1123,11 @@
       assistantEchoText: "",
       lastAssistantText: "",
       serverCreatesResponses: false,
+      manualInputTurns: false,
+      micOpen: false,
+      pendingManualMicOpen: false,
+      assistantPlaybackCoolingDown: false,
+      assistantPlaybackCooldownTimer: null,
       subtitleBackfillRunning: false,
       subtitleRetryTimer: null,
       realtimeEvents: [],
@@ -1138,8 +1166,17 @@
       renderTurns();
     });
     els.callButton.addEventListener("click", () => {
+      if (state.phase === "live" && state.manualInputTurns) {
+        if (state.micOpen) finishManualInputTurn();
+        else beginManualInputTurn();
+        return;
+      }
+      if (state.phase === "connecting") return;
+      if (state.phase === "live") stopCall();
+      else startCall({ openMicWhenLive: true });
+    });
+    els.endCallButton.addEventListener("click", () => {
       if (state.phase === "live" || state.phase === "connecting") stopCall();
-      else startCall();
     });
 
     async function init() {
@@ -1232,7 +1269,7 @@
       if (state.user) state.authExpiredHandling = false;
     }
 
-    async function startCall() {
+    async function startCall({ openMicWhenLive = false } = {}) {
       if (!state.user) return;
       clearError();
       state.sessionId = crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`;
@@ -1254,6 +1291,10 @@
       state.assistantEchoText = "";
       state.lastAssistantText = "";
       state.serverCreatesResponses = false;
+      state.manualInputTurns = false;
+      state.micOpen = false;
+      state.pendingManualMicOpen = openMicWhenLive;
+      clearAssistantPlaybackCooldown();
       state.realtimeEvents = [];
       // Seed the transcript before flipping the call state so the learner shell never flashes empty.
       state.turns = [];
@@ -1264,6 +1305,7 @@
       try {
         state.stream = await getVoxMicrophoneStream();
         recordMicAudioSettings(state.stream);
+        setMicrophoneOpen(false, "session_start");
         startRecorder(state.stream);
 
         state.pc = new RTCPeerConnection();
@@ -1281,8 +1323,9 @@
 
         state.dc = state.pc.createDataChannel("oai-events");
         state.dc.onopen = () => {
-          els.transportState.textContent = "Listening";
+          els.transportState.textContent = state.manualInputTurns ? "Ready" : "Listening";
           flushPendingResponseCreate();
+          maybeOpenPendingManualMic();
         };
         state.dc.onmessage = (event) => handleRealtimeEvent(event.data);
         state.dc.onerror = () => {
@@ -1298,13 +1341,19 @@
             "Content-Type": "application/json",
             ...authHeaders()
           },
-          body: JSON.stringify({ session_id: state.sessionId, client_response_create: true })
+          body: JSON.stringify({
+            session_id: state.sessionId,
+            client_response_create: true,
+            manual_input_turns: true
+          })
         });
         const tokenPayload = await tokenResp.json().catch(() => ({}));
         if (!tokenResp.ok) {
           throw new Error(tokenPayload.error || `voice session HTTP ${tokenResp.status}`);
         }
         state.serverCreatesResponses = tokenPayload.vox_server_creates_responses === true;
+        state.manualInputTurns = tokenPayload.vox_manual_input_turns === true;
+        if (!state.manualInputTurns) setMicrophoneOpen(true, "server_turn_detection");
         const ephemeralKey = tokenPayload.value || tokenPayload.client_secret?.value;
         if (!ephemeralKey) throw new Error("missing Realtime client secret");
 
@@ -1321,6 +1370,7 @@
 
         await state.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
         setPhase("live");
+        maybeOpenPendingManualMic();
       } catch (error) {
         addTurn("system", error.message || String(error));
         await stopCall({ failed: true });
@@ -1369,6 +1419,83 @@
       });
     }
 
+    function canUseManualMic() {
+      return state.manualInputTurns &&
+        state.phase === "live" &&
+        state.dc?.readyState === "open" &&
+        !state.responseActive &&
+        !state.assistantOutputActive &&
+        !state.pendingResponseCreate &&
+        !state.assistantPlaybackCoolingDown;
+    }
+
+    function maybeOpenPendingManualMic() {
+      if (!state.pendingManualMicOpen) return;
+      if (!canUseManualMic()) {
+        renderPhase();
+        return;
+      }
+      beginManualInputTurn();
+    }
+
+    function beginManualInputTurn() {
+      if (!canUseManualMic()) {
+        renderPhase();
+        return;
+      }
+      state.pendingManualMicOpen = false;
+      clearInputCommitFallback();
+      state.inputFallbackResponded = false;
+      state.inputCommitDuringAssistantOutput = false;
+      state.inputCommitEchoText = "";
+      sendEvent({ type: "input_audio_buffer.clear" });
+      setMicrophoneOpen(true, "manual_turn_start");
+      els.transportState.textContent = "Mic open";
+    }
+
+    function finishManualInputTurn() {
+      if (!state.manualInputTurns || !state.micOpen) return;
+      state.pendingManualMicOpen = false;
+      setMicrophoneOpen(false, "manual_turn_send");
+      clearInputCommitFallback();
+      state.inputFallbackResponded = false;
+      sendEvent({ type: "input_audio_buffer.commit" });
+      els.transportState.textContent = "Sending";
+    }
+
+    function setMicrophoneOpen(open, reason = "") {
+      const tracks = state.stream?.getAudioTracks?.() || [];
+      for (const track of tracks) track.enabled = open;
+      state.micOpen = Boolean(open && tracks.length);
+      if (reason) {
+        recordRealtimeEvent({
+          type: state.micOpen ? "vox.mic_opened" : "vox.mic_closed",
+          message: reason
+        });
+      }
+      renderPhase();
+    }
+
+    function startAssistantPlaybackCooldown() {
+      if (!state.manualInputTurns || state.phase !== "live") return;
+      clearAssistantPlaybackCooldown();
+      state.assistantPlaybackCoolingDown = true;
+      renderPhase();
+      state.assistantPlaybackCooldownTimer = setTimeout(() => {
+        state.assistantPlaybackCooldownTimer = null;
+        state.assistantPlaybackCoolingDown = false;
+        renderPhase();
+      }, ASSISTANT_PLAYBACK_COOLDOWN_MS);
+    }
+
+    function clearAssistantPlaybackCooldown() {
+      if (state.assistantPlaybackCooldownTimer) {
+        clearTimeout(state.assistantPlaybackCooldownTimer);
+        state.assistantPlaybackCooldownTimer = null;
+      }
+      state.assistantPlaybackCoolingDown = false;
+    }
+
     function stopCall({ failed = false } = {}) {
       if (state.stopCallPromise) return state.stopCallPromise;
       state.stoppingCall = true;
@@ -1414,6 +1541,7 @@
     }
 
     function closePeerConnection() {
+      setMicrophoneOpen(false, "session_end");
       try { state.dc?.close(); } catch {}
       try { state.pc?.close(); } catch {}
       state.dc = null;
@@ -1429,6 +1557,10 @@
       state.assistantOutputActive = false;
       state.assistantEchoText = "";
       state.lastAssistantText = "";
+      state.manualInputTurns = false;
+      state.micOpen = false;
+      state.pendingManualMicOpen = false;
+      clearAssistantPlaybackCooldown();
       els.remoteAudio.srcObject = null;
     }
 
@@ -1662,6 +1794,8 @@
         case "response.created":
           state.responseActive = true;
           state.assistantOutputActive = true;
+          clearAssistantPlaybackCooldown();
+          setMicrophoneOpen(false, "assistant_response");
           if (!state.inputCommitDuringAssistantOutput) state.inputCommitEchoText = "";
           state.assistantDraft = "";
           state.assistantDraftIndex = null;
@@ -1701,7 +1835,7 @@
               const emptyLearnerCommit = !transcript.trim() && !state.inputCommitDuringAssistantOutput;
               state.inputCommitDuringAssistantOutput = false;
               state.inputCommitEchoText = "";
-              if (emptyLearnerCommit && !fallbackAlreadyResponded && !state.serverCreatesResponses) {
+              if (emptyLearnerCommit && !fallbackAlreadyResponded && !state.serverCreatesResponses && !state.manualInputTurns) {
                 requestResponseCreate();
               }
               if (transcript.trim()) {
@@ -1728,6 +1862,7 @@
           rememberAssistantEchoText();
           clearResponseWatchdog();
           els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
+          startAssistantPlaybackCooldown();
           flushPendingResponseCreate();
           break;
         case "response.output_audio.done":
@@ -1735,6 +1870,7 @@
           state.assistantOutputActive = false;
           rememberAssistantEchoText();
           els.connectionBadge.textContent = state.phase === "live" ? "Live" : labelForPhase(state.phase);
+          startAssistantPlaybackCooldown();
           break;
         case "error":
           {
@@ -1745,6 +1881,7 @@
               break;
             }
             state.assistantOutputActive = false;
+            setMicrophoneOpen(false, "realtime_error");
             settleAssistantDraft();
             if (state.responseActive) {
               const resumePending = state.pendingResponseCreate;
@@ -1799,6 +1936,7 @@
     }
 
     function requestResponseCreate() {
+      if (state.micOpen) setMicrophoneOpen(false, "response_create");
       if (state.dc?.readyState !== "open") {
         state.pendingResponseCreate = true;
         return;
@@ -1835,6 +1973,7 @@
         state.assistantOutputActive = false;
         rememberAssistantEchoText();
         recordRealtimeEvent({ type: "vox.response_watchdog", message: "response.done timeout" });
+        startAssistantPlaybackCooldown();
         flushPendingResponseCreate();
       }, 30000);
     }
@@ -2190,12 +2329,40 @@
       els.statusBadge.classList.toggle("error", state.phase === "error");
       els.connectionBadge.classList.toggle("error", state.phase === "error");
       const active = state.phase === "live" || state.phase === "connecting";
-      els.callButton.classList.toggle("live", active);
-      els.callButton.innerHTML = active ? `<span class="pulse"></span><span>End and save</span>` : `<span>Start voice</span>`;
-      els.callButton.disabled = !state.user || state.phase === "booting";
+      const signedIn = Boolean(state.user);
+      let buttonHtml = `<span>Start speaking</span>`;
+      let buttonDisabled = !signedIn || state.phase === "signed_out" || state.phase === "booting";
+      let buttonLive = false;
+      if (state.phase === "connecting") {
+        buttonHtml = `<span>Connecting</span>`;
+        buttonDisabled = true;
+      } else if (state.phase === "live" && state.manualInputTurns) {
+        const manualLabel = manualInputButtonLabel();
+        buttonLive = state.micOpen;
+        buttonHtml = state.micOpen
+          ? `<span class="pulse"></span><span>${manualLabel}</span>`
+          : `<span>${manualLabel}</span>`;
+        buttonDisabled = !signedIn || (!state.micOpen && !canUseManualMic());
+      } else if (active) {
+        buttonLive = true;
+        buttonHtml = `<span class="pulse"></span><span>End and save</span>`;
+      }
+      els.callButton.classList.toggle("live", buttonLive);
+      els.callButton.innerHTML = buttonHtml;
+      els.callButton.disabled = buttonDisabled || state.stoppingCall;
+      els.endCallButton.hidden = !active;
+      els.endCallButton.disabled = !active || state.stoppingCall;
       if (!active && state.phase !== "ended") {
         els.transportState.textContent = "WebRTC idle";
       }
+    }
+
+    function manualInputButtonLabel() {
+      if (state.micOpen) return "Send";
+      if (state.assistantOutputActive || state.assistantPlaybackCoolingDown) return "Vox speaking";
+      if (state.responseActive || state.pendingResponseCreate) return "Thinking";
+      if (state.dc?.readyState !== "open") return "Connecting";
+      return "Start speaking";
     }
 
     function renderRecordings(message = "") {

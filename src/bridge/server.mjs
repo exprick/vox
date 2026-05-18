@@ -120,7 +120,11 @@ const server = http.createServer(async (req, res) => {
     if (route === 'POST /voice/session') {
       const user = await authenticateOrLocalBridge(req);
       const body = await readBody(req).catch(() => ({}));
-      const session = await createRealtimeSession({ user, clientResponseCreate: body?.client_response_create === true });
+      const session = await createRealtimeSession({
+        user,
+        clientResponseCreate: body?.client_response_create === true,
+        manualInputTurns: body?.manual_input_turns === true,
+      });
       respond(res, 200, { ...session, user: publicUser(user) });
       return;
     }

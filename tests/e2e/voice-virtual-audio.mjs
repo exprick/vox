@@ -249,16 +249,20 @@ async function runBrowserE2E({ playwright, baseUrl, fixture, mode: runMode, head
       return /Listening|ICE connected|ICE completed/i.test(transport) || /Live|Listening/i.test(badge);
     });
 
+    await page.waitForFunction(() => /Send/i.test(document.querySelector('#callButton')?.textContent || ''));
     if (runMode === 'loopback') {
       await cmdOk('/usr/bin/afplay', [fixture.wav]);
+    } else {
+      await page.waitForTimeout(Math.max(2500, leadMs + 3500));
     }
+    await page.click('#callButton');
 
     const conversation = await waitForConversation(page, timeout, shotsDir, fixture.id);
     const semantic = validateConversationSemantics(conversation, fixture.id);
 
     await page.screenshot({ path: path.join(shotsDir, 'conversation.png'), fullPage: false });
 
-    await page.click('#callButton');
+    await page.click('#endCallButton');
     await page.waitForFunction(() => /Saved|No browser audio was captured|Recording pending|Recording save failed/i.test(
       document.querySelector('#recordingState')?.textContent || ''
     ));
