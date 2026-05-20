@@ -102,9 +102,8 @@ export function dispatchCodexTool({ prompt, working_dir }) {
   };
 }
 
-/// Additional task-source registration so develop_artifact (and any future
-/// async-spawning tool) can surface its tasks through the same get_codex_tasks
-/// surface. Codex review caught develop_artifact tasks were unqueryable. (P2a.)
+/// Additional task-source registration so future async-spawning tools can
+/// surface their tasks through the same get_codex_tasks surface.
 const externalSources = [];
 export function registerCodexTaskSource(getter) {
   externalSources.push(getter);
@@ -120,7 +119,7 @@ export function getCodexTasksTool({ limit } = {}) {
   for (const getter of externalSources) {
     try {
       const ext = getter() || [];
-      for (const t of ext) merged.push({ ...t, kind: t.kind || 'develop_artifact' });
+      for (const t of ext) merged.push({ ...t, kind: t.kind || 'external' });
     } catch {}
   }
   // Sort by started_at; newest first.

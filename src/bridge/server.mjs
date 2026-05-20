@@ -11,8 +11,6 @@ import {
   translateSubtitleText,
 } from './voice.mjs';
 import { listRecordings, saveRecording } from './recordings.mjs';
-import { dispatchArtifactCreate } from './dispatch.mjs';
-import { createFillBlankArtifact } from './fill-blank-template.mjs';
 import {
   callTool,
   recordAppState,
@@ -193,13 +191,6 @@ const server = http.createServer(async (req, res) => {
       }
       return;
     }
-    if (route === 'POST /artifact/create') {
-      await authenticateOrLocalBridge(req);
-      const body = await readBody(req);
-      const result = await dispatchArtifactCreate(body);
-      respond(res, result.ok ? 200 : 500, result);
-      return;
-    }
     // ── Agent tools (function_call dispatch from iPhone Realtime) ──
     if (route === 'POST /tool/call') {
       await authenticateOrLocalBridge(req);
@@ -226,7 +217,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === 'POST /test/app-state') {
       await authenticateOrLocalBridge(req);
-      // iPhone POSTs here on tab change / drill state change / transcript turn.
+      // iPhone POSTs here on surface changes and transcript turns.
       const body = await readBody(req);
       respond(res, 200, recordAppState(body));
       return;
@@ -239,41 +230,6 @@ const server = http.createServer(async (req, res) => {
     if (route === 'GET /test/codex-tasks') {
       await authenticateOrLocalBridge(req);
       respond(res, 200, { tasks: codexTaskTable() });
-      return;
-    }
-
-    if (route === 'POST /artifact/fill-blank') {
-      await authenticateOrLocalBridge(req);
-      // Templated path — fast (<100ms), deterministic, used by Tab 2 Generate
-      // button (iOS) AND by E2E tests + voice tools.
-      // Body: { topic: string, questions: [{sentence, answer, options}, ...] }
-      // Returns: { ok, artifact_id }
-      const body = await readBody(req);
-      try {
-        const result = await createFillBlankArtifact(body);
-        // Auto-mirror into app-state so get_app_state knows the active drill
-        // even if iOS hasn't yet posted (e.g. WKWebView loaded an existing
-        // artifact via generateIfEmpty without re-POSTing).
-        recordAppState({
-          drill: {
-            kind: 'fill_blank',
-            topic: body.topic,
-            questions: body.questions,
-            answered: 0,
-            correct: 0,
-            wrong: 0,
-            completed: false,
-          },
-        });
-        // Push a Tab 2 reload so the WKWebView picks up the new artifact even
-        // when called via E2E / external HTTP (the iOS Generate button bumps
-        // reloadToken locally; this covers everyone else). Parity with the
-        // generate_drill tool which already enqueues this cmd.
-        enqueueCmd({ action: 'reload_drill', args: {} });
-        respond(res, 200, { ok: true, ...result });
-      } catch (e) {
-        respond(res, 400, { ok: false, error: String(e.message || e) });
-      }
       return;
     }
     // Static artifact serving — replaces the loopback-only python server.

@@ -22,12 +22,14 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         for ctx in connectionOptions.urlContexts {
+            VoxRuntimeConfig.applyDeepLink(ctx.url)
             NotificationCenter.default.post(name: .voxDeepLink, object: ctx.url)
         }
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for ctx in URLContexts {
+            VoxRuntimeConfig.applyDeepLink(ctx.url)
             NotificationCenter.default.post(name: .voxDeepLink, object: ctx.url)
         }
     }

@@ -6,9 +6,8 @@ This repository is public-safe. Treat all committed files as potentially visible
 
 Vox is a local-first voice English tutor prototype:
 
-- iOS SwiftUI app: Voice tab + Drill tab
+- iOS SwiftUI app: native Vox Voice surface matching the web app
 - Node bridge: OpenAI Realtime session minting, command queue, local tools
-- Drill artifacts: HTML mini-apps rendered inside WKWebView
 
 ## Development Rules
 
@@ -24,4 +23,3 @@ npm install
 OPENAI_API_KEY=... node src/bridge/server.mjs
 cd ios && xcodegen generate
 ```
-

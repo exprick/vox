@@ -294,7 +294,7 @@ async function waitForConversation(page, timeout, shotsDir, fixtureId) {
       const snapshot = window.__voxE2ESnapshot?.() || null;
       if (!snapshot) return null;
       if (!/practice|ordering|restaurant|food/i.test(snapshot.user_text)) return null;
-      if (!/practice|order|restaurant|food|try|start/i.test(snapshot.assistant_text)) return null;
+      if (!/order|restaurant|food|点|餐厅|吃/i.test(snapshot.assistant_text)) return null;
       const assistantTurns = snapshot.turns.filter((turn) => turn.role === 'assistant');
       if (!assistantTurns.length || assistantTurns.some((turn) => turn.zh_pending || !/[\u3400-\u9fff]/.test(turn.zh || ''))) return null;
       if (assistantTurns.some((turn) => turn.zh_status !== 'ready')) return null;
@@ -328,15 +328,15 @@ function validateConversationSemantics(snapshot, fixtureId) {
     for (const token of ['practice', 'ordering', 'food', 'restaurant']) {
       if (!userText.includes(token)) issues.push(`user transcript lost semantic token: ${token}`);
     }
-    if (!/(practice|order|restaurant|food|try|start)/.test(assistantText)) {
-      issues.push('Vox reply is not semantically tied to the ordering-food practice request');
+    if (!/(order|restaurant|food|点|餐厅|吃)/.test(assistantText)) {
+      issues.push('Vox reply is not semantically tied to the ordering-food conversation');
     }
   }
   if (userText && assistantText && userText === assistantText) {
     issues.push('user and Vox transcript are identical');
   }
-  if (assistantText && /[\u3400-\u9fff]/.test(snapshot.assistant_text || '')) {
-    issues.push('Vox English output contains Chinese; Chinese should stay in subtitle');
+  if (assistantText && !/[A-Za-z]/.test(snapshot.assistant_text || '')) {
+    issues.push('Vox reply should include at least one useful English phrase');
   }
 
   const result = {

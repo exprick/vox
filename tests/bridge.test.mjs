@@ -235,6 +235,27 @@ test('subtitle target language is normalized to the supported Chinese caption mo
   assert.throws(() => normalizeSubtitleTargetLanguage('French'), /unsupported subtitle target language/);
 });
 
+test('Vox system prompt is conversation-first bilingual coaching, not forced drill practice', async () => {
+  const prompt = await fs.readFile(new URL('../data/system_prompt.txt', import.meta.url), 'utf8');
+  const voiceSource = await fs.readFile(new URL('../src/bridge/voice.mjs', import.meta.url), 'utf8');
+  const truthfile = await fs.readFile(new URL('../TRUTHFILE.md', import.meta.url), 'utf8');
+  const truthfileWeb = await fs.readFile(new URL('../web/tf/index.html', import.meta.url), 'utf8');
+
+  for (const text of [prompt, voiceSource]) {
+    assert.match(text, /Chat first; coach inside the chat/);
+    assert.match(text, /Default to a natural Chinese-English mix/);
+    assert.match(text, /Treat the learner's topic as the real topic/);
+    assert.match(text, /do not force an immediate English retry/i);
+    assert.match(text, /use the relevant tool instead of turning it into an English exercise/i);
+    assert.doesNotMatch(text, /guide them back to English practice/i);
+    assert.doesNotMatch(text, /Direct practice replies/i);
+  }
+  assert.match(truthfile, /most of the session is real chat/);
+  assert.match(truthfile, /practice as a short in-conversation intervention/);
+  assert.match(truthfileWeb, /会聊天的英语外教/);
+  assert.match(truthfileWeb, /先聊天、再顺手教/);
+});
+
 test('web voice course waits for learner speech before starting a realtime response', async () => {
   const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
   const onOpenStart = html.indexOf('state.dc.onopen');
@@ -282,6 +303,188 @@ test('web voice course uses push-to-talk manual input turns for speaker echo con
   assert.match(html, /return "Start speaking"/);
   assert.match(html, /return "Send"/);
   assert.match(html, /id="endCallButton"/);
+});
+
+test('iOS native voice uses continuous listening with local speaker echo control', async () => {
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+  const pollClient = await fs.readFile(new URL('../ios/Sources/PollClient.swift', import.meta.url), 'utf8');
+  const runtimeConfig = await fs.readFile(new URL('../ios/Sources/VoxRuntimeConfig.swift', import.meta.url), 'utf8');
+  const app = await fs.readFile(new URL('../ios/Sources/VoxApp.swift', import.meta.url), 'utf8');
+
+  assert.match(swift, /let requestedManualInputTurns = false/);
+  assert.match(swift, /let requestedClientResponseCreate = false/);
+  assert.match(swift, /"client_response_create":false,"manual_input_turns":false/);
+  assert.match(swift, /serverCreatesResponses = \(json\?\["vox_server_creates_responses"\] as\? Bool\) \?\? !requestedClientResponseCreate/);
+  assert.match(swift, /manualInputTurns = \(json\?\["vox_manual_input_turns"\] as\? Bool\) \?\? requestedManualInputTurns/);
+  assert.match(swift, /track\.isEnabled = false/);
+  assert.match(swift, /@Published var isMicrophoneOpen: Bool = false/);
+  assert.match(swift, /@Published var isListeningPaused: Bool = false/);
+  assert.match(swift, /private func syncContinuousListeningGate\(reason: String\)/);
+  assert.match(swift, /!manualInputTurns[\s\S]*!isListeningPaused[\s\S]*!assistantOutputActive[\s\S]*!responseActive/);
+  assert.match(swift, /func beginManualInputTurn\(\) -> Bool/);
+  assert.match(swift, /sendDataChannelJSON\(\["type": "input_audio_buffer\.clear"\]\)/);
+  assert.match(swift, /setMicrophoneOpen\(true, reason: "manual_turn_start"\)/);
+  assert.match(swift, /func finishManualInputTurn\(\) -> Bool/);
+  assert.match(swift, /setMicrophoneOpen\(false, reason: "manual_turn_send"\)[\s\S]*input_audio_buffer\.commit/);
+  assert.match(swift, /private func requestResponseCreate\(\)[\s\S]*setMicrophoneOpen\(false, reason: "response_create"\)/);
+  assert.match(swift, /case "response\.created":[\s\S]*setMicrophoneOpen\(false, reason: "assistant_response"\)/);
+  assert.match(swift, /emptyLearnerCommit[\s\S]*&& !manualInputTurns/);
+  assert.match(swift, /private func setMicrophoneOpen\(_ open: Bool, reason: String\)[\s\S]*audioTrack\?\.isEnabled = open/);
+  assert.match(swift, /func pauseListening\(\)/);
+  assert.match(swift, /func resumeListening\(\)/);
+
+  assert.match(pollClient, /case "begin_manual_input_turn"/);
+  assert.match(pollClient, /case "finish_manual_input_turn"/);
+  assert.match(pollClient, /case "cancel_manual_input_turn"/);
+  assert.match(pollClient, /case "pause_listening"/);
+  assert.match(pollClient, /case "resume_listening"/);
+  assert.match(pollClient, /case "set_bridge_base"/);
+  assert.match(runtimeConfig, /VOX_BRIDGE_BASE/);
+  assert.match(runtimeConfig, /static func applyDeepLink/);
+  assert.match(app, /VoxRuntimeConfig\.applyDeepLink\(ctx\.url\)/);
+});
+
+test('iOS keeps requested voice mode when a legacy bridge omits optional echo flags', async () => {
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+
+  assert.match(swift, /let requestedManualInputTurns = false/);
+  assert.match(swift, /let requestedClientResponseCreate = false/);
+  assert.match(swift, /"manual_input_turns":false/);
+  assert.match(swift, /manualInputTurns = \(json\?\["vox_manual_input_turns"\] as\? Bool\) \?\? requestedManualInputTurns/);
+  assert.match(swift, /serverCreatesResponses = \(json\?\["vox_server_creates_responses"\] as\? Bool\) \?\? !requestedClientResponseCreate/);
+  assert.match(swift, /Older bridges may accept the request body but omit the manual-turn/);
+});
+
+test('iOS native transcript keeps scrollable conversation history', async () => {
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+  const voiceView = await fs.readFile(new URL('../ios/Sources/VoiceCallView.swift', import.meta.url), 'utf8');
+
+  assert.match(swift, /struct TranscriptTurn: Identifiable, Equatable/);
+  assert.match(swift, /@Published var transcriptTurns: \[TranscriptTurn\] = \[\]/);
+  assert.match(swift, /appendTranscriptTurn\(role: \.user, text: transcript\)/);
+  assert.match(swift, /private func updateAssistantDraft\(_ text: String\)/);
+  assert.match(swift, /private func finalizeAssistantDraft\(_ text: String\)/);
+  assert.match(swift, /if transcriptTurns\.count > 80/);
+  assert.match(swift, /"transcriptTurns": transcriptTurns\.suffix\(12\)\.map/);
+  assert.match(swift, /"role": turn\.role\.rawValue/);
+  assert.match(swift, /"isCurrent": turn\.isCurrent/);
+  assert.match(voiceView, /client\.transcriptTurns\.map/);
+  assert.doesNotMatch(voiceView, /let user = client\.lastUserUtterance/);
+  assert.doesNotMatch(voiceView, /let assistant = client\.lastAssistantText/);
+});
+
+test('iOS native transcript keeps user turn before the assistant answer when events arrive out of order', async () => {
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+
+  const commitCase = swift.slice(swift.indexOf('case "input_audio_buffer.committed"'), swift.indexOf('case "conversation.item.input_audio_transcription.completed"'));
+  assert.match(commitCase, /markPendingUserTranscriptOrder\(\)/);
+  assert.match(swift, /private var pendingUserTranscriptBeforeAssistant: Bool = false/);
+  assert.match(swift, /private var pendingUserTranscriptInsertionIndex: Int\?/);
+  assert.match(swift, /private var pendingUserTranscriptTimestamp: TimeInterval\?/);
+  assert.match(swift, /private var pendingUserTranscriptGeneration: Int = 0/);
+  assert.match(swift, /private func markPendingUserTranscriptOrder\(\)[\s\S]*pendingUserTranscriptBeforeAssistant = true[\s\S]*pendingUserTranscriptInsertionIndex = transcriptTurns\.count[\s\S]*pendingUserTranscriptTimestamp = Date\(\)\.timeIntervalSince1970/);
+  assert.match(swift, /private func clearPendingUserTranscriptOrder\(\)[\s\S]*pendingUserTranscriptBeforeAssistant = false[\s\S]*pendingUserTranscriptInsertionIndex = nil[\s\S]*pendingUserTranscriptTimestamp = nil/);
+
+  const transcriptionCase = swift.slice(swift.indexOf('case "conversation.item.input_audio_transcription.completed"'), swift.indexOf('case "response.output_item.done"'));
+  assert.match(transcriptionCase, /appendTranscriptTurn\(role: \.user, text: transcript\)[\s\S]*clearPendingUserTranscriptOrder\(\)/);
+  assert.match(transcriptionCase, /shouldIgnoreInputTranscript\(transcript\)[\s\S]*clearPendingUserTranscriptOrder\(\)[\s\S]*return/);
+
+  const appendTurn = swift.slice(swift.indexOf('private func appendTranscriptTurn'), swift.indexOf('private func updateAssistantDraft'));
+  assert.match(appendTurn, /let timestamp = \(role == \.user \? pendingUserTranscriptTimestamp : nil\) \?\? Date\(\)\.timeIntervalSince1970/);
+  assert.match(appendTurn, /role == \.user && pendingUserTranscriptBeforeAssistant/);
+  assert.match(appendTurn, /pendingUserTranscriptInsertionIndex/);
+  assert.match(appendTurn, /min\(insertionIndex, transcriptTurns\.count\)/);
+  assert.match(appendTurn, /transcriptTurns\.insert\(turn, at: index\)/);
+  assert.doesNotMatch(appendTurn, /lastIndex\(where: \{ \$0\.role == \.assistant \}\)/);
+  assert.match(appendTurn, /transcriptTurns\.append\(turn\)/);
+});
+
+test('web transcript uses the audio commit position instead of the previous assistant as the user-turn anchor', async () => {
+  const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
+
+  const commitCase = html.slice(html.indexOf('case "input_audio_buffer.committed"'), html.indexOf('case "conversation.item.input_audio_transcription.completed"'));
+  assert.match(commitCase, /markPendingUserTranscriptOrder\(\)/);
+  assert.match(html, /pendingUserTranscriptInsertionIndex:\s*null/);
+  assert.match(html, /pendingUserTranscriptTs:\s*null/);
+  assert.match(html, /function markPendingUserTranscriptOrder\(\)[\s\S]*state\.pendingUserTranscriptInsertionIndex = state\.turns\.length[\s\S]*state\.pendingUserTranscriptTs = Date\.now\(\)/);
+  assert.match(html, /function clearPendingUserTranscriptOrder\(\)[\s\S]*state\.pendingUserTranscriptInsertionIndex = null[\s\S]*state\.pendingUserTranscriptTs = null/);
+
+  const transcriptionCase = html.slice(html.indexOf('case "conversation.item.input_audio_transcription.completed"'), html.indexOf('case "response.output_item.done"'));
+  assert.match(transcriptionCase, /addTurn\("user", transcript\)[\s\S]*clearPendingUserTranscriptOrder\(\)/);
+  assert.match(transcriptionCase, /shouldIgnoreInputTranscript\(transcript\)[\s\S]*clearPendingUserTranscriptOrder\(\)[\s\S]*break/);
+
+  const addTurn = html.slice(html.indexOf('function addTurn'), html.indexOf('function createTurn'));
+  assert.match(addTurn, /role === "user" && Number\.isInteger\(state\.pendingUserTranscriptInsertionIndex\)/);
+  assert.match(addTurn, /Number\.isFinite\(state\.pendingUserTranscriptTs\)[\s\S]*turn\.ts = state\.pendingUserTranscriptTs/);
+  assert.match(addTurn, /state\.turns\.splice\(index, 0, turn\)/);
+  assert.match(addTurn, /state\.assistantDraftIndex \+= 1/);
+});
+
+test('iOS native voice suppresses recoverable WebRTC empty-buffer errors', async () => {
+  const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+
+  assert.match(swift, /msg\.range\(of: "buffer too small", options: \.caseInsensitive\)/);
+  assert.match(swift, /ignored recoverable empty input commit/);
+  assert.match(swift, /lastError = nil[\s\S]*if state == \.error \{ state = \.connected \}/);
+  assert.match(swift, /case \.failed:[\s\S]*self\.scheduleReconnect\(reason: "ice_failed"\)/);
+});
+
+test('iOS bridge config keeps temporary E2E bridge URLs out of persistent settings', async () => {
+  const pollClient = await fs.readFile(new URL('../ios/Sources/PollClient.swift', import.meta.url), 'utf8');
+  const runtimeConfig = await fs.readFile(new URL('../ios/Sources/VoxRuntimeConfig.swift', import.meta.url), 'utf8');
+  const buildInstall = await fs.readFile(new URL('../scripts/build-install.sh', import.meta.url), 'utf8');
+
+  const envIndex = runtimeConfig.indexOf('ProcessInfo.processInfo.environment["VOX_BRIDGE_BASE"]');
+  const overrideIndex = runtimeConfig.indexOf('bridgeBaseOverride');
+  const defaultsIndex = runtimeConfig.indexOf('UserDefaults.standard.string(forKey: bridgeBaseKey)');
+  assert.ok(envIndex >= 0, 'runtime config should accept launch-time bridge override');
+  assert.ok(overrideIndex >= 0, 'runtime config should keep a non-persistent in-memory override');
+  assert.ok(defaultsIndex >= 0, 'runtime config should still support persistent bridge settings');
+  assert.ok(envIndex < defaultsIndex, 'launch env should win over stale UserDefaults bridge URL');
+
+  assert.match(runtimeConfig, /static func setBridgeBase\(_ value: String, persist: Bool = true\) -> Bool/);
+  assert.match(runtimeConfig, /if persist \{[\s\S]*UserDefaults\.standard\.set\(trimmed, forKey: bridgeBaseKey\)[\s\S]*bridgeBaseOverride = nil[\s\S]*\} else \{[\s\S]*bridgeBaseOverride = trimmed/);
+  assert.match(runtimeConfig, /let persistValue = comps\.queryItems\?\.[\s\S]*first\(where: \{ \$0\.name == "persist" \}/);
+  assert.match(runtimeConfig, /!\["0", "false", "no"\]\.contains\(persistValue\)/);
+
+  assert.match(pollClient, /case "set_bridge_base":[\s\S]*Self\.boolArg\(cmd\.args\?\["persist"\], defaultValue: true\)/);
+  assert.match(pollClient, /VoxRuntimeConfig\.setBridgeBase\(value, persist: persist\)/);
+
+  assert.match(buildInstall, /VOX_BRIDGE_PERSIST/);
+  assert.match(buildInstall, /URLSearchParams\(\{ bridge: process\.env\.VOX_BRIDGE_BASE, persist: process\.env\.VOX_BRIDGE_PERSIST \}\)/);
+  assert.match(buildInstall, /vox:\/\/config\?\$\{qs\}/);
+});
+
+test('iOS app mirrors canonical Vox Voice without legacy drill surfaces', async () => {
+  const root = await fs.readFile(new URL('../ios/Sources/RootView.swift', import.meta.url), 'utf8');
+  const voiceView = await fs.readFile(new URL('../ios/Sources/VoiceCallView.swift', import.meta.url), 'utf8');
+  const pollClient = await fs.readFile(new URL('../ios/Sources/PollClient.swift', import.meta.url), 'utf8');
+  const toolRegistry = await fs.readFile(new URL('../src/bridge/tools/index.mjs', import.meta.url), 'utf8');
+  const voicePrompt = await fs.readFile(new URL('../src/bridge/voice.mjs', import.meta.url), 'utf8');
+  const appState = await fs.readFile(new URL('../src/bridge/tools/app-state.mjs', import.meta.url), 'utf8');
+  const readme = await fs.readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const agents = await fs.readFile(new URL('../AGENTS.md', import.meta.url), 'utf8');
+  const truthfileWeb = await fs.readFile(new URL('../web/tf/index.html', import.meta.url), 'utf8');
+  const scanned = [root, voiceView, pollClient, toolRegistry, voicePrompt, appState, readme, agents, truthfileWeb].join('\n');
+
+  assert.match(root, /VoiceCallView\(\)/);
+  assert.doesNotMatch(root, /TabView|DrillView|tabItem/);
+  assert.match(root, /"surface": "voice"/);
+
+  assert.match(voiceView, /return "Start"/);
+  assert.match(voiceView, /return client\.isListeningPaused \? "Resume" : "Pause"/);
+  assert.match(voiceView, /Vox speaking/);
+  assert.match(voiceView, /Listening/);
+  assert.doesNotMatch(voiceView, /return "Send"/);
+  assert.doesNotMatch(voiceView, /return "End and save"/);
+  assert.doesNotMatch(voiceView, /Talk|Wait/);
+
+  assert.doesNotMatch(pollClient, /switch_tab|reload_drill|eval_artifact/);
+  assert.doesNotMatch(toolRegistry, /generate_drill|develop_artifact|Tab 2|fill-in-the-blank/);
+  assert.doesNotMatch(voicePrompt, /generate_drill|tab\/drill|drill/);
+  assert.match(appState, /surface: 'unknown'/);
+  assert.doesNotMatch(appState, /drill|tab:/);
+  assert.doesNotMatch(scanned, /Teacher|Drill|generate_drill|reload_drill|develop_artifact|Tab 2/);
 });
 
 test('web root redirects to the canonical voice app URL without client-side redirect', async () => {

@@ -27,7 +27,7 @@ export const FIXTURES = [
   },
   {
     id: 'fossil-error-en',
-    description: 'pure-English fossil drill (interested about → in)',
+    description: 'pure-English fossilized error (interested about -> in)',
     expect: 'recasts naturally to "interested in" without lecturing',
     segments: [
       { voice: 'Samantha', text: "I'm interested about ordering a coffee." },
@@ -46,7 +46,7 @@ export const FIXTURES = [
   {
     id: 'greet-zh',
     description: 'pure Chinese intent statement',
-    expect: 'briefly acknowledges in Chinese, then guides into English practice',
+    expect: 'answers the intent conversationally, then offers one useful English phrase',
     segments: [
       { voice: 'Tingting', text: '你好，今天我想练点旅行用的英语。' },
     ],

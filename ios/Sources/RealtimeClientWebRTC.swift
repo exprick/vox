@@ -22,6 +22,19 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         case undetermined, denied, granted
     }
 
+    struct TranscriptTurn: Identifiable, Equatable {
+        enum Role: String {
+            case user
+            case assistant
+        }
+
+        let id: String
+        let role: Role
+        var text: String
+        var isCurrent: Bool
+        let ts: TimeInterval
+    }
+
     // Mirrors the WS-based RealtimeClient's @Published surface so VoiceCallView
     // and PollClient.state can read either implementation interchangeably.
     @Published var state: ConnectionState = .idle { didSet { reportState(reason: "state_change") } }
@@ -32,15 +45,13 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     @Published var micPermission: MicPermission = .undetermined
     @Published var dataChannelOpen: Bool = false
     @Published var iceConnectionState: String = "new"
+    @Published var manualInputTurns: Bool = false { didSet { reportState(reason: "manual_input_turns") } }
+    @Published var isMicrophoneOpen: Bool = false { didSet { reportState(reason: "mic_gate") } }
+    @Published var assistantPlaybackCoolingDown: Bool = false { didSet { reportState(reason: "playback_cooldown") } }
+    @Published var isListeningPaused: Bool = false { didSet { reportState(reason: "listening_paused") } }
+    @Published var transcriptTurns: [TranscriptTurn] = []
 
-    private var bridgeBase: String {
-        if let override = UserDefaults.standard.string(forKey: "bridgeBase") { return override }
-        #if targetEnvironment(simulator)
-        return "http://127.0.0.1:3203"
-        #else
-        return "http://127.0.0.1:3203"
-        #endif
-    }
+    private var bridgeBase: String { VoxRuntimeConfig.bridgeBase }
 
     /// Single shared factory — RTCPeerConnectionFactory is heavy and meant to
     /// outlive individual peer connections.
@@ -64,6 +75,15 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private var assistantOutputActive: Bool = false
     private var assistantEchoText: String = ""
     private var serverCreatesResponses: Bool = false
+    private var manualInputTurnActive: Bool = false
+    private var activeAssistantTurnId: String?
+    private var pendingUserTranscriptBeforeAssistant: Bool = false
+    private var pendingUserTranscriptInsertionIndex: Int?
+    private var pendingUserTranscriptTimestamp: TimeInterval?
+    private var pendingUserTranscriptGeneration: Int = 0
+    private var assistantPlaybackCooldownGeneration: Int = 0
+    private let assistantPlaybackCooldownMs: Int = 800
+    private var reconnectGeneration: Int = 0
 
     /// Bumped on disconnect / new connect attempt. Lets a connect() resumed
     /// from suspension see that the user has moved on, and abort instead of
@@ -88,6 +108,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         connectGeneration &+= 1
         let myGen = connectGeneration
         disconnecting = false
+        isListeningPaused = false
 
         if !(await ensureMicPermission()) {
             lastError = "Microphone access denied. Open Settings → Vox → Microphone to enable."
@@ -160,6 +181,19 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             "audioRouteOut": outDesc,
             "dataChannelOpen": dataChannelOpen,
             "iceConnectionState": iceConnectionState,
+            "manualInputTurns": manualInputTurns,
+            "isMicrophoneOpen": isMicrophoneOpen,
+            "assistantPlaybackCoolingDown": assistantPlaybackCoolingDown,
+            "isListeningPaused": isListeningPaused,
+            "transcriptTurnCount": transcriptTurns.count,
+            "transcriptTurns": transcriptTurns.suffix(12).map { turn in
+                [
+                    "role": turn.role.rawValue,
+                    "text": turn.text,
+                    "isCurrent": turn.isCurrent,
+                    "ts": turn.ts,
+                ] as [String: Any]
+            },
         ]
     }
 
@@ -185,10 +219,12 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     }
 
     private func fetchEphemeralKey() async throws -> String {
+        let requestedManualInputTurns = false
+        let requestedClientResponseCreate = false
         var req = URLRequest(url: URL(string: "\(bridgeBase)/voice/session")!)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = #"{"client_response_create":true}"#.data(using: .utf8)
+        req.httpBody = #"{"client_response_create":false,"manual_input_turns":false}"#.data(using: .utf8)
         req.timeoutInterval = 10
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
@@ -197,7 +233,11 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             ])
         }
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        serverCreatesResponses = (json?["vox_server_creates_responses"] as? Bool) == true
+        serverCreatesResponses = (json?["vox_server_creates_responses"] as? Bool) ?? !requestedClientResponseCreate
+        // Older bridges may accept the request body but omit the manual-turn
+        // echo flag. Keep the iOS interaction in the mode it requested unless
+        // the bridge explicitly reports otherwise.
+        manualInputTurns = (json?["vox_manual_input_turns"] as? Bool) ?? requestedManualInputTurns
         let directValue = json?["value"] as? String
         let secret = json?["client_secret"] as? [String: Any]
         let nestedValue = secret?["value"] as? String
@@ -234,8 +274,10 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         )
         let audioSource = Self.factory.audioSource(with: audioConstraints)
         let track = Self.factory.audioTrack(with: audioSource, trackId: "vox-mic")
+        track.isEnabled = false
         pc.add(track, streamIds: ["vox-stream"])
         self.audioTrack = track
+        isMicrophoneOpen = false
 
         // Data channel for OpenAI events. Must be created BEFORE offer so it
         // gets included in SDP.
@@ -318,6 +360,14 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         assistantEchoText = ""
         lastAssistantText = ""
         serverCreatesResponses = false
+        manualInputTurns = false
+        manualInputTurnActive = false
+        isListeningPaused = false
+        activeAssistantTurnId = nil
+        clearPendingUserTranscriptOrder()
+        assistantPlaybackCooldownGeneration += 1
+        assistantPlaybackCoolingDown = false
+        setMicrophoneOpen(false, reason: "cleanup")
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -332,22 +382,28 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             responseActive = true
             assistantOutputActive = true
             isAssistantSpeaking = true
+            lastError = nil
+            clearAssistantPlaybackCooldown()
+            setMicrophoneOpen(false, reason: "assistant_response")
             if !inputCommitDuringAssistantOutput {
                 inputCommitEchoText = ""
             }
             assistantBuffer = ""
             assistantEchoText = ""
             lastAssistantText = ""
+            activeAssistantTurnId = nil
             startResponseWatchdog()
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 assistantBuffer += delta
                 assistantEchoText = assistantBuffer
                 lastAssistantText = assistantBuffer
+                updateAssistantDraft(assistantBuffer)
             }
         case "response.audio_transcript.done", "response.output_audio_transcript.done":
             // Final assistant text — push to bridge so get_app_state can see it.
             assistantEchoText = assistantBuffer
+            finalizeAssistantDraft(assistantBuffer)
             rememberAssistantEchoText()
             postTranscriptToBridge(role: "assistant", text: assistantBuffer)
         case "response.audio.done", "response.output_audio.done", "response.done":
@@ -357,9 +413,11 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
                 completeResponse()
             }
             isAssistantSpeaking = false
+            startAssistantPlaybackCooldown()
         case "input_audio_buffer.committed":
             inputCommitDuringAssistantOutput = assistantOutputActive
             inputCommitEchoText = inputCommitDuringAssistantOutput ? currentAssistantEchoText() : ""
+            markPendingUserTranscriptOrder()
             scheduleInputCommitFallback()
         case "conversation.item.input_audio_transcription.completed":
             let transcript = (json["transcript"] as? String) ?? ""
@@ -373,15 +431,19 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
                 let emptyLearnerCommit = transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !inputCommitDuringAssistantOutput
                 inputCommitDuringAssistantOutput = false
                 inputCommitEchoText = ""
-                if emptyLearnerCommit && !fallbackAlreadyResponded && !serverCreatesResponses {
+                if emptyLearnerCommit && !fallbackAlreadyResponded && !serverCreatesResponses && !manualInputTurns {
                     requestResponseCreate()
                 }
                 if !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     log("ignored input transcript as assistant echo: \(transcript.prefix(80))")
                 }
+                clearPendingUserTranscriptOrder()
                 return
             }
             lastUserUtterance = transcript
+            appendTranscriptTurn(role: .user, text: transcript)
+            clearPendingUserTranscriptOrder()
+            lastError = nil
             postTranscriptToBridge(role: "user", text: transcript)
             inputCommitDuringAssistantOutput = false
             inputCommitEchoText = ""
@@ -402,6 +464,12 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             }
         case "error":
             if let err = json["error"] as? [String: Any], let msg = err["message"] as? String {
+                if msg.range(of: "buffer too small", options: .caseInsensitive) != nil {
+                    log("ignored recoverable empty input commit: \(msg)")
+                    lastError = nil
+                    if state == .error { state = .connected }
+                    return
+                }
                 if msg.range(of: "active response in progress", options: .caseInsensitive) != nil {
                     log("deferred response.create while active response in progress")
                     deferResponseCreateForActiveResponse()
@@ -492,6 +560,69 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         requestResponseCreate()
     }
 
+    func pauseListening() {
+        isListeningPaused = true
+        if manualInputTurns {
+            cancelManualInputTurn()
+        } else {
+            setMicrophoneOpen(false, reason: "pause")
+        }
+    }
+
+    func resumeListening() {
+        guard state == .connected else { return }
+        isListeningPaused = false
+        syncContinuousListeningGate(reason: "resume")
+    }
+
+    func canBeginManualInputTurn() -> Bool {
+        manualInputTurns &&
+            state == .connected &&
+            dataChannel?.readyState == .open &&
+            !responseActive &&
+            !assistantOutputActive &&
+            !pendingResponseCreate &&
+            !assistantPlaybackCoolingDown
+    }
+
+    @discardableResult
+    func beginManualInputTurn() -> Bool {
+        guard canBeginManualInputTurn() else {
+            log("beginManualInputTurn refused")
+            return false
+        }
+        clearInputCommitFallback()
+        inputCommitFallbackResponded = false
+        inputCommitDuringAssistantOutput = false
+        inputCommitEchoText = ""
+        sendDataChannelJSON(["type": "input_audio_buffer.clear"])
+        manualInputTurnActive = true
+        setMicrophoneOpen(true, reason: "manual_turn_start")
+        return true
+    }
+
+    @discardableResult
+    func finishManualInputTurn() -> Bool {
+        guard manualInputTurns, manualInputTurnActive, isMicrophoneOpen else {
+            log("finishManualInputTurn refused")
+            return false
+        }
+        manualInputTurnActive = false
+        setMicrophoneOpen(false, reason: "manual_turn_send")
+        clearInputCommitFallback()
+        inputCommitFallbackResponded = false
+        sendDataChannelJSON(["type": "input_audio_buffer.commit"])
+        return true
+    }
+
+    func cancelManualInputTurn() {
+        guard manualInputTurnActive || isMicrophoneOpen else { return }
+        manualInputTurnActive = false
+        setMicrophoneOpen(false, reason: "manual_turn_cancel")
+        sendDataChannelJSON(["type": "input_audio_buffer.clear"])
+        clearInputCommitFallback()
+    }
+
     /// Bridge calls this via PollClient `update_session_instructions` after
     /// update_system_prompt tool runs. Live session config swap, no reconnect.
     func updateSessionInstructions(_ instructions: String) {
@@ -510,6 +641,9 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     }
 
     private func requestResponseCreate() {
+        if isMicrophoneOpen {
+            setMicrophoneOpen(false, reason: "response_create")
+        }
         guard dataChannel?.readyState == .open else {
             pendingResponseCreate = true
             return
@@ -525,17 +659,74 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         sendDataChannelJSON(["type": "response.create"])
     }
 
+    private func syncContinuousListeningGate(reason: String) {
+        guard !manualInputTurns else { return }
+        let shouldOpen = state == .connected &&
+            !isListeningPaused &&
+            dataChannel?.readyState == .open &&
+            !assistantOutputActive &&
+            !responseActive &&
+            !assistantPlaybackCoolingDown
+        setMicrophoneOpen(shouldOpen, reason: reason)
+    }
+
+    private func setMicrophoneOpen(_ open: Bool, reason: String) {
+        audioTrack?.isEnabled = open
+        isMicrophoneOpen = open && audioTrack != nil
+        log("mic gate: \(isMicrophoneOpen ? "open" : "closed") reason=\(reason)")
+    }
+
+    private func startAssistantPlaybackCooldown() {
+        guard state == .connected else { return }
+        assistantPlaybackCooldownGeneration += 1
+        let generation = assistantPlaybackCooldownGeneration
+        assistantPlaybackCoolingDown = true
+        setMicrophoneOpen(false, reason: "playback_cooldown")
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(assistantPlaybackCooldownMs)) { [weak self] in
+            guard let self else { return }
+            guard self.assistantPlaybackCooldownGeneration == generation else { return }
+            self.assistantPlaybackCoolingDown = false
+            self.syncContinuousListeningGate(reason: "playback_cooldown_done")
+        }
+    }
+
+    private func clearAssistantPlaybackCooldown() {
+        assistantPlaybackCooldownGeneration += 1
+        assistantPlaybackCoolingDown = false
+        syncContinuousListeningGate(reason: "clear_playback_cooldown")
+    }
+
     private func completeResponse() {
         responseActive = false
         responseWatchdogGeneration += 1
-        guard pendingResponseCreate else { return }
-        requestResponseCreate()
+        if pendingResponseCreate {
+            requestResponseCreate()
+        } else {
+            syncContinuousListeningGate(reason: "response_done")
+        }
     }
 
     private func deferResponseCreateForActiveResponse() {
         responseActive = true
         pendingResponseCreate = true
         startResponseWatchdog()
+    }
+
+    private func scheduleReconnect(reason: String) {
+        guard !disconnecting else { return }
+        reconnectGeneration += 1
+        let generation = reconnectGeneration
+        log("schedule reconnect: \(reason)")
+        lastError = nil
+        disconnecting = true
+        cleanup()
+        disconnecting = false
+        state = .closed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self else { return }
+            guard self.reconnectGeneration == generation else { return }
+            Task { await self.connect() }
+        }
     }
 
     private func startResponseWatchdog() {
@@ -585,8 +776,31 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         inputCommitFallbackScheduled = false
     }
 
+    private func markPendingUserTranscriptOrder() {
+        pendingUserTranscriptBeforeAssistant = true
+        pendingUserTranscriptInsertionIndex = transcriptTurns.count
+        pendingUserTranscriptTimestamp = Date().timeIntervalSince1970
+        pendingUserTranscriptGeneration += 1
+        let generation = pendingUserTranscriptGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self else { return }
+            guard self.pendingUserTranscriptGeneration == generation else { return }
+            self.pendingUserTranscriptBeforeAssistant = false
+            self.pendingUserTranscriptInsertionIndex = nil
+            self.pendingUserTranscriptTimestamp = nil
+        }
+    }
+
+    private func clearPendingUserTranscriptOrder() {
+        pendingUserTranscriptGeneration += 1
+        pendingUserTranscriptBeforeAssistant = false
+        pendingUserTranscriptInsertionIndex = nil
+        pendingUserTranscriptTimestamp = nil
+    }
+
     private func settleAssistantBuffer() {
         if !assistantBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            finalizeAssistantDraft(assistantBuffer)
             postTranscriptToBridge(role: "assistant", text: assistantBuffer)
             lastAssistantText = assistantBuffer
             assistantEchoText = assistantBuffer
@@ -635,6 +849,66 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         let text = currentAssistantEchoText().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         assistantEchoText = text
+    }
+
+    private func appendTranscriptTurn(role: TranscriptTurn.Role, text: String, isCurrent: Bool = false) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let timestamp = (role == .user ? pendingUserTranscriptTimestamp : nil) ?? Date().timeIntervalSince1970
+        let turn = TranscriptTurn(
+            id: "\(role.rawValue)-\(Int(timestamp * 1000))-\(transcriptTurns.count)",
+            role: role,
+            text: trimmed,
+            isCurrent: isCurrent,
+            ts: timestamp
+        )
+        if role == .user && pendingUserTranscriptBeforeAssistant,
+           let insertionIndex = pendingUserTranscriptInsertionIndex {
+            let index = max(0, min(insertionIndex, transcriptTurns.count))
+            transcriptTurns.insert(turn, at: index)
+        } else {
+            transcriptTurns.append(turn)
+        }
+        if transcriptTurns.count > 80 {
+            transcriptTurns = Array(transcriptTurns.suffix(80))
+        }
+    }
+
+    private func updateAssistantDraft(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if let id = activeAssistantTurnId,
+           let index = transcriptTurns.firstIndex(where: { $0.id == id }) {
+            transcriptTurns[index].text = trimmed
+            transcriptTurns[index].isCurrent = true
+            return
+        }
+        let id = "assistant-\(Int(Date().timeIntervalSince1970 * 1000))-\(transcriptTurns.count)"
+        activeAssistantTurnId = id
+        transcriptTurns.append(.init(
+            id: id,
+            role: .assistant,
+            text: trimmed,
+            isCurrent: true,
+            ts: Date().timeIntervalSince1970
+        ))
+        if transcriptTurns.count > 80 {
+            transcriptTurns = Array(transcriptTurns.suffix(80))
+        }
+    }
+
+    private func finalizeAssistantDraft(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            activeAssistantTurnId = nil
+            return
+        }
+        updateAssistantDraft(trimmed)
+        if let id = activeAssistantTurnId,
+           let index = transcriptTurns.firstIndex(where: { $0.id == id }) {
+            transcriptTurns[index].isCurrent = false
+        }
+        activeAssistantTurnId = nil
     }
 
     private func containsCompactSpeechScript(_ value: String) -> Bool {
@@ -782,8 +1056,10 @@ extension RealtimeClientWebRTC: RTCPeerConnectionDelegate {
             switch newState {
             case .connected, .completed:
                 self.state = .connected
+                self.lastError = nil
+                self.syncContinuousListeningGate(reason: "ice_\(label)")
             case .failed:
-                self.state = .error
+                self.scheduleReconnect(reason: "ice_failed")
             case .closed:
                 // Genuine remote-side close (not user-initiated): treat as closed.
                 self.state = .closed
@@ -816,6 +1092,7 @@ extension RealtimeClientWebRTC: RTCDataChannelDelegate {
             if isOpen, self.pendingResponseCreate, !self.responseActive {
                 self.requestResponseCreate()
             }
+            self.syncContinuousListeningGate(reason: isOpen ? "data_channel_open" : "data_channel_closed")
         }
     }
 

@@ -10,7 +10,8 @@
     "test": "node --test",
     "test:e2e:voice:check": "node tests/e2e/voice-virtual-audio.mjs --mode=loopback --dry-run",
     "test:e2e:voice:loopback": "node tests/e2e/voice-virtual-audio.mjs --mode=loopback",
-    "test:e2e:voice:file": "node tests/e2e/voice-virtual-audio.mjs --mode=fake-file"
+    "test:e2e:voice:file": "node tests/e2e/voice-virtual-audio.mjs --mode=fake-file",
+    "test:e2e:ios:smoke": "node tests/e2e/ios-native-voice-smoke.mjs"
   },
   "dependencies": {
     "ws": "^8.20.0"

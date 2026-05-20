@@ -17,7 +17,7 @@
         <a href="#flow-access">入口与登录</a>
         <a href="#flow-voice">实时语音</a>
         <a href="#flow-adapt">听懂校准</a>
-        <a href="#flow-drill">练习生成</a>
+        <a href="#flow-practice">卡点回收</a>
         <a href="#flow-memory">记忆与 Prompt</a>
         <a href="#flow-recording">录音与字幕</a>
         <a href="#flow-governance">Truthfile</a>
@@ -31,8 +31,8 @@
     <main class="tf-flow-main">
       <header class="tf-flow-hero">
         <div class="tf-kicker">当前对齐 · Workflow Truthfile</div>
-        <h1>把 Vox 看成一条会自我调节的英语练习流水线。</h1>
-        <p>每个流程都拆成模块：学习者从入口进入，Vox 建立实时语音会话，判断是否听懂，选择下一句的语言档位，并把练习、记忆和录音保存接回下次会话。</p>
+        <h1>把 Vox 看成一个会聊天的英语外教。</h1>
+        <p>大多数时候它在认真接住用户正在聊的事；只有发现卡点时，才把一句话、一个词或一种说法短暂变成练习，再回到原来的交流。</p>
         <div class="tf-live-strip" aria-label="当前线上配置">
           <button type="button" class="tf-chip" data-node="auth-gate"><span>登录</span><strong id="liveAuth">读取中</strong></button>
           <button type="button" class="tf-chip" data-node="voice-model"><span>语音模型</span><strong id="liveModel">读取中</strong></button>
@@ -118,7 +118,7 @@
           <span class="tf-flow-index">03</span>
           <div>
             <h2>听懂校准</h2>
-            <p>Vox 的核心不是固定课程，而是在同一场对话里判断“听懂了、半懂，还是丢了”。</p>
+            <p>Vox 的核心不是固定课程，而是在真实聊天里判断“听懂了、半懂，还是丢了”。</p>
           </div>
         </div>
         <div class="tf-loop-canvas">
@@ -155,36 +155,36 @@
         </details>
       </section>
 
-      <section class="tf-workflow" id="flow-drill">
+      <section class="tf-workflow" id="flow-practice">
         <div class="tf-workflow-head">
           <span class="tf-flow-index">04</span>
           <div>
-            <h2>练习生成</h2>
-            <p>对话里发现卡点后，Vox 可以把练习送到 Drill Tab，不把用户拖进复杂课程选择。</p>
+            <h2>卡点回收</h2>
+            <p>对话里发现卡点后，Vox 只做一次很短的口语修正或替换句，然后继续聊原来的事。</p>
           </div>
         </div>
         <div class="tf-flow-chain">
-          <button type="button" class="tf-node" data-node="generate-drill">
-            <span class="tf-node-type">Tool</span>
-            <strong>生成填空题</strong>
-            <em>generate_drill</em>
+          <button type="button" class="tf-node" data-node="notice-block">
+            <span class="tf-node-type">Signal</span>
+            <strong>发现卡点</strong>
+            <em>停住 / 答偏 / 反复错</em>
           </button>
           <span class="tf-connector" aria-hidden="true"></span>
-          <button type="button" class="tf-node" data-node="artifact-tab">
-            <span class="tf-node-type">Artifact</span>
-            <strong>发布到 Tab 2</strong>
-            <em>/artifact/latest/</em>
+          <button type="button" class="tf-node" data-node="micro-practice">
+            <span class="tf-node-type">Practice</span>
+            <strong>同屏短练</strong>
+            <em>一句话重说 / 替换练习</em>
           </button>
           <span class="tf-connector" aria-hidden="true"></span>
-          <button type="button" class="tf-node" data-node="drill-state">
+          <button type="button" class="tf-node" data-node="carry-forward">
             <span class="tf-node-type">State</span>
-            <strong>练习状态回流</strong>
-            <em>answered / correct / wrong</em>
+            <strong>带回下一轮</strong>
+            <em>近期卡点 / 复习队列</em>
           </button>
         </div>
         <details class="tf-loop" open>
-          <summary>练习来源</summary>
-          <p>Vox 可以直接给题目，也可以只给主题，让 starter pack 生成餐厅、旅行、酒店、日常、咖啡等场景练习。</p>
+          <summary>练习边界</summary>
+          <p>练习是对话的一部分，不是默认话题。Vox 应该先回答用户真正聊的内容，再把刚才的卡点变成 1 句自然英文表达、替换句或理解确认。</p>
         </details>
       </section>
 
@@ -426,49 +426,47 @@
         ],
         note: "Vox 的产品价值在下一句体现：它必须根据上一轮理解情况改变输出。"
       },
-      "generate-drill": {
-        title: "生成填空题",
-        status: "tool",
+      "notice-block": {
+        title: "发现卡点",
+        status: "loop",
         config: [
-          ["Tool", "generate_drill"],
-          ["题型", "fill-in-the-blank multiple choice"],
-          ["输入", "topic + optional questions"],
-          ["Starter topics", "restaurant / travel / hotel / daily / cafe"]
+          ["信号", "停住 / 答偏 / 反复错"],
+          ["判断", "先看是否听懂意思"],
+          ["动作", "不要立刻切到题库"]
         ],
-        note: "练习应该来自刚才的卡点，而不是随机扔一套题。"
+        note: "卡点是下一句怎么说的输入，不是把用户送去另一个 Tab 的理由。"
       },
-      "artifact-tab": {
-        title: "发布到 Drill Tab",
-        status: "tool",
+      "micro-practice": {
+        title: "同屏短练",
+        status: "loop",
         config: [
-          ["Artifact route", "/artifact/latest/"],
-          ["自动动作", "reload_drill"],
-          ["Tab", "Tab 2"],
-          ["Custom mini-app", "develop_artifact"]
+          ["形式", "一句话重说 / 替换练习"],
+          ["长度", "1-2 个短回合"],
+          ["语言", "英文优先，必要时中文解释"]
         ],
-        note: "Vox 可以生成固定模板练习，也可以让 Codex 构建一个自定义 HTML mini-app 放到 Tab 2。"
+        note: "练习要留在同一条语音体验里，避免把 Vox 变成课程/题库应用。"
       },
-      "drill-state": {
-        title: "练习状态回流",
+      "carry-forward": {
+        title: "带回下一轮",
         status: "state",
         config: [
-          ["State fields", "topic / questions / answered / correct / wrong"],
-          ["App state route", "/test/app-state"],
-          ["Voice tool", "get_app_state"]
+          ["近期卡点", "短语 / 发音 / 句型"],
+          ["复习队列", "下次自然带回"],
+          ["画像更新", "只保存总结，不保存原始私聊"]
         ],
-        note: "模型可以知道用户正在看什么练习，以及练习做到了哪里。"
+        note: "复习应该服务下一次对话的开场，而不是制造一个独立练习分支。"
       },
       "prompt-core": {
         title: "当前 Vox 人设",
         status: "prompt",
         config: [
           ["Source", "data/system_prompt.txt"],
-          ["Role", "Chinese-speaking English learner A2-B2"],
-          ["Tone", "warm, patient, natural"],
-          ["Language", "default English; Chinese rescue when needed"],
-          ["Turn length", "1-2 short sentences"]
+          ["Role", "conversation-first English speaking coach"],
+          ["Tone", "warm, thoughtful, natural"],
+          ["Language", "Chinese-English mix by default"],
+          ["Turn length", "1-3 short spoken sentences"]
         ],
-        note: "当前公开原型没有按真实登录用户分开的 prompt；会话读取共享基础 Prompt，再追加工具提示。"
+        note: "Prompt 的第一条边界是先聊天、再顺手教；除非用户明确要求，不把所有话题拉回练习。"
       },
       "tool-hint": {
         title: "工具提示追加",
@@ -477,7 +475,6 @@
           ["App state", "get_app_state"],
           ["Memory", "list_memory / read_memory / write_memory"],
           ["Prompt control", "update_system_prompt"],
-          ["Practice", "generate_drill / develop_artifact"],
           ["Coding worker", "dispatch_codex / get_codex_tasks"]
         ],
         note: "Tool hint 在创建 Realtime session 时追加，提醒 Vox 主动使用可用工具。"

@@ -1119,6 +1119,9 @@
       inputFallbackResponded: false,
       inputCommitDuringAssistantOutput: false,
       inputCommitEchoText: "",
+      pendingUserTranscriptInsertionIndex: null,
+      pendingUserTranscriptTs: null,
+      pendingUserTranscriptTimer: null,
       assistantOutputActive: false,
       assistantEchoText: "",
       lastAssistantText: "",
@@ -1284,6 +1287,7 @@
       state.pendingResponseCreate = false;
       clearResponseWatchdog();
       clearInputCommitFallback();
+      clearPendingUserTranscriptOrder();
       state.inputFallbackResponded = false;
       state.inputCommitDuringAssistantOutput = false;
       state.inputCommitEchoText = "";
@@ -1551,6 +1555,7 @@
       state.pendingResponseCreate = false;
       clearResponseWatchdog();
       clearInputCommitFallback();
+      clearPendingUserTranscriptOrder();
       state.inputFallbackResponded = false;
       state.inputCommitDuringAssistantOutput = false;
       state.inputCommitEchoText = "";
@@ -1822,6 +1827,7 @@
           state.inputCommitEchoText = state.inputCommitDuringAssistantOutput
             ? currentAssistantEchoText()
             : "";
+          markPendingUserTranscriptOrder();
           scheduleInputCommitFallback();
           break;
         case "conversation.item.input_audio_transcription.completed":
@@ -1845,9 +1851,11 @@
                   text: transcript
                 });
               }
+              clearPendingUserTranscriptOrder();
               break;
             }
             addTurn("user", transcript);
+            clearPendingUserTranscriptOrder();
             state.inputCommitDuringAssistantOutput = false;
             state.inputCommitEchoText = "";
             if (!fallbackAlreadyResponded && !state.serverCreatesResponses) requestResponseCreate();
@@ -2008,6 +2016,24 @@
       state.pendingInputCommitTimer = null;
     }
 
+    function markPendingUserTranscriptOrder() {
+      state.pendingUserTranscriptInsertionIndex = state.turns.length;
+      state.pendingUserTranscriptTs = Date.now();
+      if (state.pendingUserTranscriptTimer) clearTimeout(state.pendingUserTranscriptTimer);
+      state.pendingUserTranscriptTimer = setTimeout(() => {
+        state.pendingUserTranscriptInsertionIndex = null;
+        state.pendingUserTranscriptTs = null;
+        state.pendingUserTranscriptTimer = null;
+      }, 15000);
+    }
+
+    function clearPendingUserTranscriptOrder() {
+      state.pendingUserTranscriptInsertionIndex = null;
+      state.pendingUserTranscriptTs = null;
+      if (state.pendingUserTranscriptTimer) clearTimeout(state.pendingUserTranscriptTimer);
+      state.pendingUserTranscriptTimer = null;
+    }
+
     function recordRealtimeEvent(event) {
       if (typeof event?.type !== "string" || !event.type) return;
       const entry = {
@@ -2125,7 +2151,16 @@
     function addTurn(role, text, opts = {}) {
       if (!text) return;
       const turn = createTurn(role, text, opts);
-      state.turns.push(turn);
+      if (role === "user" && Number.isInteger(state.pendingUserTranscriptInsertionIndex)) {
+        if (Number.isFinite(state.pendingUserTranscriptTs)) turn.ts = state.pendingUserTranscriptTs;
+        const index = Math.max(0, Math.min(state.pendingUserTranscriptInsertionIndex, state.turns.length));
+        state.turns.splice(index, 0, turn);
+        if (Number.isInteger(state.assistantDraftIndex) && index <= state.assistantDraftIndex) {
+          state.assistantDraftIndex += 1;
+        }
+      } else {
+        state.turns.push(turn);
+      }
       if (opts.render !== false) renderTurns();
       return turn;
     }

@@ -14,12 +14,16 @@
 #   VOX_DEVICE_UUID   devicectl UUID for install/launch
 # Optional:
 #   VOX_BUNDLE_ID     bundle id to launch after install
+#   VOX_BRIDGE_BASE   bridge URL reachable by the device, e.g. http://192.168.1.10:3203
+#   VOX_BRIDGE_PERSIST  set 0 for temporary E2E bridges so the app does not keep a dead URL
+#   DEVELOPMENT_TEAM  Apple team id for local signing, if not already set in Xcode
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 IOS_DIR="$ROOT/ios"
 BUNDLE_ID="${VOX_BUNDLE_ID:-com.example.vox}"
+DERIVED_DATA_PATH="${VOX_DERIVED_DATA_PATH:-$IOS_DIR/DerivedData}"
 
 if [[ -z "${VOX_DEVICE_ECID:-}" || -z "${VOX_DEVICE_UUID:-}" ]]; then
   echo "Set VOX_DEVICE_ECID and VOX_DEVICE_UUID before installing to a physical device." >&2
@@ -35,12 +39,22 @@ xcodegen generate >/dev/null
 
 echo "==> xcodebuild (device: $DEVICE_ECID)"
 LOG=$(mktemp)
-if ! xcodebuild \
+BUILD_ARGS=(
     -project Vox.xcodeproj \
     -scheme Vox \
     -destination "id=$DEVICE_ECID" \
+    -derivedDataPath "$DERIVED_DATA_PATH" \
     -configuration Debug \
-    build > "$LOG" 2>&1; then
+    -allowProvisioningUpdates \
+    build
+)
+if [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
+  BUILD_ARGS+=(DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
+fi
+if [[ -n "${VOX_BUNDLE_ID:-}" ]]; then
+  BUILD_ARGS+=(PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID")
+fi
+if ! xcodebuild "${BUILD_ARGS[@]}" > "$LOG" 2>&1; then
   echo "build failed — last 60 lines:" >&2
   tail -60 "$LOG" >&2
   exit 1
@@ -49,7 +63,7 @@ fi
 APP_PATH=$(grep -oE '/[^ ]*Vox\.app' "$LOG" | head -1)
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
   # Fallback: derived data
-  APP_PATH=$(find "$HOME/Library/Developer/Xcode/DerivedData" -name 'Vox.app' -path '*Debug-iphoneos*' -print -quit 2>/dev/null || true)
+  APP_PATH=$(find "$DERIVED_DATA_PATH" -name 'Vox.app' -path '*Debug-iphoneos*' -print -quit 2>/dev/null || true)
 fi
 if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
   echo "could not locate Vox.app after build" >&2
@@ -62,6 +76,12 @@ xcrun devicectl device install app --device "$DEVICE_UUID" "$APP_PATH" >/dev/nul
 
 echo "==> devicectl launch (foreground)"
 # --terminate-existing replaces any running instance so PollClient picks up the new bundle.
-xcrun devicectl device process launch --device "$DEVICE_UUID" --terminate-existing "$BUNDLE_ID" >/dev/null
+LAUNCH_ARGS=(device process launch --device "$DEVICE_UUID" --terminate-existing "$BUNDLE_ID")
+if [[ -n "${VOX_BRIDGE_BASE:-}" ]]; then
+  ENV_JSON=$(VOX_BRIDGE_BASE="$VOX_BRIDGE_BASE" node -e 'console.log(JSON.stringify({VOX_BRIDGE_BASE: process.env.VOX_BRIDGE_BASE}))')
+  PAYLOAD_URL=$(VOX_BRIDGE_BASE="$VOX_BRIDGE_BASE" VOX_BRIDGE_PERSIST="${VOX_BRIDGE_PERSIST:-1}" node -e 'const qs = new URLSearchParams({ bridge: process.env.VOX_BRIDGE_BASE, persist: process.env.VOX_BRIDGE_PERSIST }); console.log(`vox://config?${qs}`)')
+  LAUNCH_ARGS+=(--environment-variables "$ENV_JSON" --payload-url "$PAYLOAD_URL")
+fi
+xcrun devicectl "${LAUNCH_ARGS[@]}" >/dev/null
 
 echo "==> done — app launched. Wait ~3s then poll bridge /cmd/next."

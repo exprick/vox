@@ -18,8 +18,7 @@ final class PollClient {
     static let shared = PollClient()
 
     private var bridgeBase: String {
-        if let v = UserDefaults.standard.string(forKey: "bridgeBase") { return v }
-        return "http://127.0.0.1:3203"
+        VoxRuntimeConfig.bridgeBase
     }
 
     private var pollTask: Task<Void, Never>?
@@ -87,25 +86,29 @@ final class PollClient {
         case "disconnect":
             client.disconnect()
             return ["state": client.state.rawValue]
+        case "set_bridge_base":
+            let value = (cmd.args?["bridge"] as? String) ?? ""
+            let persist = Self.boolArg(cmd.args?["persist"], defaultValue: true)
+            let ok = VoxRuntimeConfig.setBridgeBase(value, persist: persist)
+            return ["ok": ok, "bridge": VoxRuntimeConfig.bridgeBase]
         case "request_mic_permission":
             let granted = await client.ensureMicPermission()
             return ["granted": granted, "permission": client.micPermission.rawValue]
-        case "switch_tab":
-            // E2E hook: drive the TabView from Mac. tab=0 voice, tab=1 drill.
-            let tab = (cmd.args?["tab"] as? Double).map { Int($0) } ?? (cmd.args?["tab"] as? Int) ?? 0
-            TabSelectionRegistry.shared.switchTo(tab)
-            // Give SwiftUI a beat to actually swap.
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            return ["tab": tab]
-        case "reload_drill":
-            // Bridge generate_drill tool just wrote a new artifact; force the
-            // already-instantiated WKWebView to reload so the user sees the
-            // new game without leaving Tab 2 (codex review P2 fix).
-            if let view = DrillWebViewRegistry.shared.current() {
-                view.reloadFromOrigin()
-                return ["reloaded": true]
-            }
-            return ["reloaded": false, "reason": "no drill webview registered"]
+        case "begin_manual_input_turn":
+            let ok = client.beginManualInputTurn()
+            return ["ok": ok, "micOpen": client.isMicrophoneOpen]
+        case "finish_manual_input_turn":
+            let ok = client.finishManualInputTurn()
+            return ["ok": ok, "micOpen": client.isMicrophoneOpen]
+        case "cancel_manual_input_turn":
+            client.cancelManualInputTurn()
+            return ["ok": true, "micOpen": client.isMicrophoneOpen]
+        case "pause_listening":
+            client.pauseListening()
+            return ["ok": true, "micOpen": client.isMicrophoneOpen, "paused": client.isListeningPaused]
+        case "resume_listening":
+            client.resumeListening()
+            return ["ok": true, "micOpen": client.isMicrophoneOpen, "paused": client.isListeningPaused]
         case "inject_realtime_message":
             // Bridge tool (codex) finished async → pushes a user-style message
             // into the live Realtime session so the model voice-reports it.
@@ -118,26 +121,6 @@ final class PollClient {
             let instructions = (cmd.args?["instructions"] as? String) ?? ""
             client.updateSessionInstructions(instructions)
             return ["sent": true, "len": instructions.count]
-        case "eval_artifact":
-            // E2E hook: evaluate JS inside the drill WKWebView. Returns the
-            // result as String (or error message). Used to assert
-            // window.voxArtifact contracts (kind/topic/questions/getState).
-            let js = (cmd.args?["js"] as? String) ?? "JSON.stringify(window.voxArtifact?.getState?.() || null)"
-            guard let webView = DrillWebViewRegistry.shared.current() else {
-                throw NSError(domain: "Vox", code: 10, userInfo: [NSLocalizedDescriptionKey: "drill webview not loaded — switch to tab 1 first"])
-            }
-            let result: Any
-            do {
-                result = try await webView.evaluateJavaScript(js)
-            } catch {
-                throw NSError(domain: "Vox", code: 11, userInfo: [NSLocalizedDescriptionKey: "JS error: \(error.localizedDescription)"])
-            }
-            let asString: String
-            if let s = result as? String { asString = s }
-            else if let n = result as? NSNumber { asString = n.stringValue }
-            else if let r = result as? NSObject { asString = "\(r)" }
-            else { asString = "null" }
-            return ["js": js, "result": asString]
         default:
             throw NSError(domain: "Vox", code: 3, userInfo: [NSLocalizedDescriptionKey: "unknown action: \(cmd.action)"])
         }
@@ -206,6 +189,17 @@ final class PollClient {
     }
     private func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
     private func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+
+    private static func boolArg(_ value: Any?, defaultValue: Bool) -> Bool {
+        if let bool = value as? Bool { return bool }
+        if let number = value as? NSNumber { return number.boolValue }
+        if let string = value as? String {
+            let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["0", "false", "no"].contains(normalized) { return false }
+            if ["1", "true", "yes"].contains(normalized) { return true }
+        }
+        return defaultValue
+    }
 }
 
 private struct CommandEnvelope: Decodable { let cmd: Command? }

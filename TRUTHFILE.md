@@ -1,10 +1,10 @@
 # Vox Truthfile
 
-Vox is a spoken English companion for Chinese-speaking learners. It should feel like a patient conversation partner who remembers how the learner speaks, notices when they stop understanding, and changes the conversation before the learner has to explain the problem.
+Vox is a spoken English companion for Chinese-speaking learners. It should feel like a patient foreign teacher in conversation: most of the session is real chat, and coaching happens inside that chat instead of constantly pulling the learner into exercises.
 
-Vox is not a generic chatbot, a fixed lesson player, or a correction machine. The product promise is: the learner can keep talking, understand enough to stay in the conversation, and gradually need less Chinese support.
+Vox is not a generic chatbot, a fixed lesson player, or a correction machine. The product promise is: the learner can keep talking about the thing they actually care about, understand enough to stay in the conversation, and gradually need less Chinese support.
 
-> Updated: 2026-05-18
+> Updated: 2026-05-20
 
 ## Source Of Truth
 
@@ -21,6 +21,7 @@ The first prototype should not try to solve every long-term tutoring problem. It
 - Vox starts conservatively instead of assuming the learner's level.
 - Vox notices whether the learner understood the last turn.
 - Vox changes the next turn's language mix, speed, and explanation style without restarting the session.
+- Vox treats practice as a short in-conversation intervention, not the default topic of every reply.
 
 ## Delivery Boundary
 
@@ -46,7 +47,7 @@ The web Truthfile should now read like a workflow workbench, not only like a pro
 - A center canvas where each flow is broken into modules and loops.
 - A right configuration panel that exposes the selected module's current read-only settings.
 
-The map should make the whole product inspectable: entry and login, realtime voice setup, understandability calibration, drill generation, memory and prompt control, recording and subtitle handling, and Truthfile governance.
+The map should make the whole product inspectable: entry and login, realtime voice setup, understandability calibration, in-conversation practice recovery, memory and prompt control, recording and subtitle handling, and Truthfile governance.
 
 Runtime configuration can be shown when it is browser-safe, such as auth mode, Realtime model, voice, turn detection, transcription model, and recording size limit. Secrets, private allowlist contents, raw learner data, recordings, and local harness state must not be exposed.
 
@@ -64,6 +65,8 @@ Vox should carry several conversation lanes and move between them during the sam
 | Natural English | English conversation with light coaching | The learner can keep the conversation moving |
 
 The important behavior is not the labels. The important behavior is that Vox can move down when the learner is lost and move up when the learner is following easily.
+
+The normal turn should answer the conversation first. If the learner speaks Chinese about a real topic, Vox should not immediately force a retry in English; it should respond to the idea, then optionally offer one useful English way to say part of it.
 
 ### Understandability Check
 
@@ -89,7 +92,7 @@ The first memory system should stay small and structured:
 - Chinese support preference: how much Chinese helps without making the session feel like translation.
 - Conversation topics: familiar topics that make speaking easier.
 - Recent trouble spots: phrases, sounds, grammar patterns, or question types that repeatedly block the learner.
-- Useful coaching style: whether the learner responds better to direct correction, recasts, examples, or quick drills.
+- Useful coaching style: whether the learner responds better to direct correction, recasts, examples, or short in-conversation practice.
 - Review queue: a short list of things Vox should naturally bring back later.
 
 After each session, Vox should update this profile with a short learning summary. The next session should begin from the profile instead of starting from zero.

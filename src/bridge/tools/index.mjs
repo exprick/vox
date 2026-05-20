@@ -18,24 +18,7 @@ import {
   getCodexTasksTool,
   getTaskTable as codexTaskTable,
   bindCmdEnqueuer as bindCodexEnqueuer,
-  registerCodexTaskSource,
 } from './codex.mjs';
-import {
-  generateDrillTool,
-  bindCmdEnqueuer as bindDrillEnqueuer,
-} from './drill.mjs';
-import {
-  developArtifactTool,
-  getDevelopArtifactTasks,
-  bindCmdEnqueuer as bindDevelopArtifactEnqueuer,
-} from './develop-artifact.mjs';
-
-// Surface develop_artifact tasks through the unified get_codex_tasks tool so
-// the model can answer "is my custom artifact ready" the same way it asks
-// about dispatch_codex tasks. (Codex review P2a.)
-registerCodexTaskSource(getDevelopArtifactTasks);
-
-export { getDevelopArtifactTasks };
 
 export { recordAppState, appStateSnapshot, codexTaskTable };
 
@@ -43,8 +26,6 @@ export { recordAppState, appStateSnapshot, codexTaskTable };
 export function bindToolCmdEnqueuer(fn) {
   bindPromptEnqueuer(fn);
   bindCodexEnqueuer(fn);
-  bindDrillEnqueuer(fn);
-  bindDevelopArtifactEnqueuer(fn);
 }
 
 /// Realtime session.tools array — declared at session create.
@@ -54,11 +35,9 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     name: 'get_app_state',
     description:
-      'Returns what the user is currently looking at in the Vox iOS app: ' +
-      'which tab is active (voice or drill), the current drill state if any ' +
-      '(topic, questions, score), and the recent conversation transcript window. ' +
-      'Call this when the user asks about what they see, what tab they are on, ' +
-      'how their drill is going, or what was just said.',
+      'Returns what the user is currently seeing in Vox Voice, plus the ' +
+      'recent conversation transcript window. Call this when the user asks ' +
+      'what is on screen or what was just said.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -129,47 +108,6 @@ export const TOOL_DEFINITIONS = [
   },
   {
     type: 'function',
-    name: 'generate_drill',
-    description:
-      'Generate an English fill-in-the-blank multiple-choice quiz and put it on Tab 2 of the ' +
-      'iOS app, then auto-switch the user to that tab. Two ways to call: ' +
-      '(1) provide explicit `questions` — best when YOU have good grammar or ' +
-      'vocabulary choices from the conversation context (e.g. words the learner just struggled ' +
-      'with); (2) provide just `topic` and let it pick from a curated starter ' +
-      'pack matching the topic keyword (restaurant, travel, hotel, daily, cafe). ' +
-      'Use this whenever the user asks for practice, drill, exercise, quiz, or ' +
-      'review.',
-    parameters: {
-      type: 'object',
-      properties: {
-        topic: { type: 'string', description: 'human-readable topic shown as the drill\'s header' },
-        questions: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              sentence: { type: 'string', description: 'English sentence containing ____ where the missing word belongs' },
-              answer: { type: 'string', description: 'the correct missing word' },
-              options: {
-                type: 'array',
-                items: { type: 'string' },
-                minItems: 3,
-                maxItems: 4,
-                description: '3 or 4 multiple-choice options, including answer',
-              },
-            },
-            required: ['sentence', 'answer', 'options'],
-            additionalProperties: false,
-          },
-          description: '3–10 fill-in-the-blank questions; if omitted, falls back to a starter pack matching topic',
-        },
-      },
-      required: ['topic'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
     name: 'get_codex_tasks',
     description:
       'List recent Codex worker tasks the agent has dispatched (newest first). ' +
@@ -182,32 +120,6 @@ export const TOOL_DEFINITIONS = [
       properties: {
         limit: { type: 'number', description: 'how many recent tasks to return (default 5, max 20)' },
       },
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'develop_artifact',
-    description:
-      'Spawn Codex to BUILD a custom HTML mini-app for Tab 2 (any quiz / game / ' +
-      'visualization the user describes). Codex runs in a fresh artifacts/<id>/ ' +
-      'directory; on success the artifact is auto-published to Tab 2 (latest ' +
-      'symlink updated + WKWebView reloaded + user switched to Tab 2). ' +
-      'Async like dispatch_codex — returns task_id immediately, finishes 30–90s, ' +
-      'when done a system message tells you "your custom artifact is ready". ' +
-      'Use this INSTEAD of dispatch_codex when the user wants something to appear ' +
-      'on Tab 2 (e.g. "make me a tap-the-emoji game", "build a flashcard app for ' +
-      'these words", "I want a chart of my scores"). dispatch_codex is for editing ' +
-      'project source code; develop_artifact is for live HTML on Tab 2.',
-    parameters: {
-      type: 'object',
-      properties: {
-        prompt: {
-          type: 'string',
-          description: 'natural-language description of the artifact to build (any HTML mini-app)',
-        },
-      },
-      required: ['prompt'],
       additionalProperties: false,
     },
   },
@@ -226,8 +138,7 @@ export const TOOL_DEFINITIONS = [
       'E2E). For "fix bug X and verify": ask Codex in one prompt — it can ' +
       'self-loop. Use for: source code changes, refactors, bug investigation ' +
       'and self-fix, exploring files, running shell commands. Do NOT use for ' +
-      'simple lookups you can answer yourself; do NOT use for HTML mini-apps ' +
-      'on Tab 2 (use develop_artifact for that).',
+      'simple lookups you can answer yourself.',
     parameters: {
       type: 'object',
       properties: {
@@ -254,8 +165,6 @@ export async function callTool(name, args) {
     case 'update_system_prompt':return await updateSystemPromptTool(args);
     case 'dispatch_codex':      return dispatchCodexTool(args);
     case 'get_codex_tasks':     return getCodexTasksTool(args);
-    case 'generate_drill':      return await generateDrillTool(args);
-    case 'develop_artifact':    return developArtifactTool(args);
     default:                    return { output: `unknown tool: ${name}` };
   }
 }

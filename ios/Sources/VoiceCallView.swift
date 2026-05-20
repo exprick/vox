@@ -3,101 +3,24 @@ import SwiftUI
 struct VoiceCallView: View {
     @StateObject private var client = SharedClient.shared.client
     @Environment(\.scenePhase) private var scenePhase
-
-    // The orb's pulse used to read RealtimeClient.inputLevel (RMS from our own
-    // mic tap). The WebRTC client doesn't expose that — libwebrtc owns the
-    // audio pipeline. Surface the talking-state (assistantSpeaking) instead.
-    private var pulseScale: CGFloat { client.isAssistantSpeaking ? 30 : 0 }
+    @State private var showChineseSubtitles = true
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ZStack {
+            VoxPalette.pageBackground.ignoresSafeArea()
 
-            VStack(spacing: 6) {
-                Text("Vox")
-                    .font(.system(size: 32, weight: .bold))
-                Text("Real-time voice practice · 中英混说")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                header
+                transcript
+                controls
             }
-
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(orbColor.opacity(0.15))
-                    .frame(width: 240 + pulseScale, height: 240 + pulseScale)
-                    .animation(.easeOut(duration: 0.2), value: pulseScale)
-                Circle()
-                    .fill(orbColor)
-                    .frame(width: 200, height: 200)
-                Image(systemName: micIcon)
-                    .font(.system(size: 80))
-                    .foregroundStyle(.white)
-            }
-
-            Text(statusText)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            if !client.lastUserUtterance.isEmpty || !client.lastAssistantText.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !client.lastUserUtterance.isEmpty {
-                        Text("you: \(client.lastUserUtterance)")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !client.lastAssistantText.isEmpty {
-                        Text(client.lastAssistantText)
-                            .font(.body)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal)
-            }
-
-            Spacer()
-
-            Button(action: toggleConnection) {
-                Text(buttonText)
-                    .font(.title3.bold())
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(buttonColor)
-                    .clipShape(Capsule())
-            }
-            .padding(.horizontal, 32)
-
-            if client.micPermission == .denied {
-                Text("Microphone is off. Open Settings → Vox → Microphone to enable.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal)
-                    .padding(.bottom, 4)
-            } else if let err = client.lastError, !err.isEmpty {
-                Text(err)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(VoxPalette.shellBackground)
         }
-        .padding(.vertical, 32)
         .onAppear {
-            // Auto-connect on cold launch so the learner can speak immediately. The
-            // RealtimeClient handles permission prompt + bounded retry on transient
-            // network failure, so we don't need to gate this on anything.
             autoConnectIfNeeded(reason: "onAppear")
         }
         .onChange(of: scenePhase) { _, phase in
-            // Returning from background after WS dropped: re-attempt so the
-            // user sees a usable session without tapping Start.
             if phase == .active {
                 autoConnectIfNeeded(reason: "scenePhase=active")
             }
@@ -109,6 +32,213 @@ struct VoiceCallView: View {
         }
     }
 
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text("Vox")
+                .font(.custom("Georgia", size: 30).italic())
+                .foregroundStyle(VoxPalette.ink)
+            Spacer(minLength: 12)
+            statusBadge
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 28)
+        .padding(.bottom, 8)
+    }
+
+    private var statusBadge: some View {
+        Text(statusLabel)
+            .font(.system(size: 12, weight: .semibold))
+            .tracking(1.1)
+            .textCase(.uppercase)
+            .foregroundStyle(statusColor)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(VoxPalette.cream.opacity(0.36))
+            .clipShape(Capsule())
+    }
+
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 23) {
+                    ForEach(displayTurns) { turn in
+                        transcriptTurn(turn)
+                            .id(turn.id)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 28)
+                .padding(.top, 44)
+                .padding(.bottom, 42)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: displayTurns.map(\.text).joined(separator: "|")) { _, _ in
+                if let id = displayTurns.last?.id {
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        proxy.scrollTo(id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
+    private func transcriptTurn(_ turn: VoxTranscriptTurn) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(turn.label)
+                .font(.custom("Georgia", size: 14).italic())
+                .foregroundStyle(turn.role == .user ? VoxPalette.coral.opacity(0.64) : VoxPalette.muted)
+
+            Text(turn.text)
+                .font(.custom("Georgia", size: turn.isCurrent ? currentTextSize(for: turn.text) : 23))
+                .lineSpacing(2)
+                .foregroundStyle(turnTextColor(turn))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if showChineseSubtitles, let subtitle = turn.subtitle {
+                Text(subtitle)
+                    .font(.system(size: turn.text.count > 130 ? 14 : 15))
+                    .lineSpacing(1)
+                    .foregroundStyle(VoxPalette.ink.opacity(0.52))
+            }
+        }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Button(action: { showChineseSubtitles.toggle() }) {
+                    HStack(spacing: 7) {
+                        Circle()
+                            .fill(showChineseSubtitles ? VoxPalette.coral.opacity(0.78) : VoxPalette.ink.opacity(0.28))
+                            .frame(width: 7, height: 7)
+                        Text("中")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(VoxPalette.ink.opacity(0.58))
+                    .frame(height: 28)
+                    .padding(.horizontal, 10)
+                    .background(VoxPalette.cream.opacity(0.32))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showChineseSubtitles ? "中文字幕开" : "中文字幕关")
+
+                Spacer(minLength: 12)
+
+                Text(subtitleStatusText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(VoxPalette.ink.opacity(0.46))
+                    .lineLimit(1)
+            }
+
+            Button(action: primaryButtonAction) {
+                HStack(spacing: 10) {
+                    if primaryButtonIsLive {
+                        Circle()
+                            .fill(Color.white.opacity(0.88))
+                            .frame(width: 12, height: 12)
+                    }
+                    Text(primaryButtonText)
+                        .font(.system(size: 15, weight: .semibold))
+                        .tracking(0.2)
+                }
+                .foregroundStyle(VoxPalette.cream)
+                .frame(maxWidth: .infinity)
+                .frame(height: 58)
+                .background(primaryButtonColor)
+                .clipShape(Capsule())
+                .shadow(color: VoxPalette.ink.opacity(0.18), radius: 22, y: 12)
+            }
+            .buttonStyle(.plain)
+            .disabled(primaryButtonDisabled)
+            .opacity(primaryButtonDisabled ? 0.55 : 1)
+
+            HStack(spacing: 10) {
+                if showsEndButton {
+                    Button(action: { client.disconnect() }) {
+                        Text("End")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(VoxPalette.ink.opacity(0.56))
+                            .frame(height: 30)
+                            .padding(.horizontal, 14)
+                            .background(VoxPalette.cream.opacity(0.28))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(transportText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(VoxPalette.ink.opacity(0.50))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+
+            if client.micPermission == .denied {
+                Text("Microphone is off. Open Settings -> Vox -> Microphone to enable.")
+                    .font(.caption)
+                    .foregroundStyle(VoxPalette.coral)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let err = client.lastError, !err.isEmpty {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(VoxPalette.coral)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+        .padding(.bottom, 18)
+    }
+
+    private var displayTurns: [VoxTranscriptTurn] {
+        if !client.transcriptTurns.isEmpty {
+            return client.transcriptTurns.map { turn in
+                let role: VoxTranscriptTurn.Role = turn.role == .user ? .user : .assistant
+                return .init(
+                    id: turn.id,
+                    role: role,
+                    label: role == .user ? "You" : "Vox",
+                    text: turn.text,
+                    subtitle: nil,
+                    isCurrent: turn.isCurrent || turn.id == client.transcriptTurns.last?.id
+                )
+            }
+        }
+
+        return previewTurns
+    }
+
+    private var previewTurns: [VoxTranscriptTurn] {
+        [
+            .init(
+                id: "preview-vox-1",
+                role: .assistant,
+                label: "Vox · Preview",
+                text: "Let's start with one easy question.",
+                subtitle: "先从一个简单问题开始。",
+                isCurrent: false
+            ),
+            .init(
+                id: "preview-user-1",
+                role: .user,
+                label: "Learner · Preview",
+                text: "I want to practice ordering food.",
+                subtitle: nil,
+                isCurrent: false
+            ),
+            .init(
+                id: "preview-vox-2",
+                role: .assistant,
+                label: "Vox · Preview",
+                text: "Good. What would you like to order?",
+                subtitle: "很好。你想点什么？",
+                isCurrent: true
+            ),
+        ]
+    }
+
     private func autoConnectIfNeeded(reason: String) {
         switch client.state {
         case .idle, .closed, .error:
@@ -118,58 +248,128 @@ struct VoiceCallView: View {
         }
     }
 
-    private func toggleConnection() {
+    private func primaryButtonAction() {
         switch client.state {
         case .idle, .closed, .error:
             Task { await client.connect() }
-        case .connecting, .connected:
-            client.disconnect()
+        case .connecting:
+            break
+        case .connected:
+            if client.isListeningPaused {
+                client.resumeListening()
+            } else {
+                client.pauseListening()
+            }
         }
     }
 
-    private var statusText: String {
-        if client.micPermission == .denied {
-            return "Microphone disabled"
-        }
+    private var statusLabel: String {
         switch client.state {
-        case .idle: return "Starting…"
-        case .connecting: return "Connecting…"
-        case .connected: return client.isAssistantSpeaking ? "Vox is speaking" : "Listening — say something"
-        case .error: return "Reconnecting…"
-        case .closed: return "Call ended"
+        case .idle, .closed: return "Ready"
+        case .connecting: return "Connecting"
+        case .connected: return client.isListeningPaused ? "Paused" : "Live"
+        case .error: return "Error"
         }
     }
 
-    private var buttonText: String {
+    private var statusColor: Color {
         switch client.state {
-        case .idle: return "Start"
-        case .closed: return "Start"
-        case .error: return "Retry"
-        case .connecting: return "Connecting…"
-        case .connected: return "End"
+        case .connected: return VoxPalette.coral
+        case .error: return VoxPalette.coral
+        default: return VoxPalette.muted
         }
     }
 
-    private var buttonColor: Color {
+    private var subtitleStatusText: String {
+        showChineseSubtitles ? "Vox English shows Chinese subtitle" : "Chinese subtitles hidden"
+    }
+
+    private var primaryButtonText: String {
         switch client.state {
-        case .connected: return .red
-        case .connecting: return .gray
-        default: return .blue
+        case .idle, .closed, .error:
+            return "Start"
+        case .connecting:
+            return "Connecting"
+        case .connected:
+            return client.isListeningPaused ? "Resume" : "Pause"
         }
     }
 
-    private var orbColor: Color {
+    private var primaryButtonColor: Color {
+        client.isListeningPaused ? VoxPalette.ink : VoxPalette.coral
+    }
+
+    private var primaryButtonIsLive: Bool {
+        client.state == .connected && !client.isListeningPaused
+    }
+
+    private var primaryButtonDisabled: Bool {
         switch client.state {
-        case .connected: return client.isAssistantSpeaking ? .green : .blue
-        case .connecting: return .gray
-        case .error: return .red
-        default: return Color(.systemGray3)
+        case .connecting:
+            return true
+        default:
+            return false
         }
     }
 
-    private var micIcon: String {
-        client.state == .connected ? "waveform" : "mic.fill"
+    private var showsEndButton: Bool {
+        switch client.state {
+        case .connecting, .connected: return true
+        default: return false
+        }
     }
+
+    private var transportText: String {
+        switch client.state {
+        case .connected:
+            if client.isListeningPaused { return "Paused" }
+            if client.isAssistantSpeaking { return "Vox speaking" }
+            if client.isMicrophoneOpen { return "Listening" }
+            return client.dataChannelOpen ? "WebRTC connected" : "WebRTC connecting"
+        case .connecting:
+            return "WebRTC connecting"
+        case .error:
+            return "WebRTC error"
+        default:
+            return "WebRTC idle"
+        }
+    }
+
+    private func currentTextSize(for text: String) -> CGFloat {
+        if text.count > 260 { return 20 }
+        if text.count > 130 { return 23 }
+        return 30
+    }
+
+    private func turnTextColor(_ turn: VoxTranscriptTurn) -> Color {
+        if turn.role == .user {
+            return turn.isCurrent ? VoxPalette.coral.opacity(0.92) : VoxPalette.coral.opacity(0.72)
+        }
+        return turn.isCurrent ? VoxPalette.ink : VoxPalette.ink.opacity(0.58)
+    }
+}
+
+private struct VoxTranscriptTurn: Identifiable {
+    enum Role {
+        case user
+        case assistant
+    }
+
+    let id: String
+    let role: Role
+    let label: String
+    let text: String
+    let subtitle: String?
+    let isCurrent: Bool
+}
+
+private enum VoxPalette {
+    static let pageBackground = Color(red: 0.10, green: 0.08, blue: 0.06)
+    static let shellBackground = Color(red: 0.89, green: 0.66, blue: 0.55)
+    static let cream = Color(red: 1.00, green: 0.96, blue: 0.91)
+    static let ink = Color(red: 0.15, green: 0.08, blue: 0.06)
+    static let muted = Color(red: 0.15, green: 0.08, blue: 0.06).opacity(0.62)
+    static let coral = Color(red: 0.71, green: 0.26, blue: 0.21)
 }
 
 @MainActor
@@ -178,22 +378,8 @@ final class SharedClient {
     let client = RealtimeClientWebRTC()
 
     func handleDeepLink(_ url: URL) async {
-        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-        let host = comps.host ?? ""
-        let qs = comps.queryItems ?? []
-        let params: [String: String] = Dictionary(qs.compactMap { item -> (String, String)? in
-            guard let value = item.value else { return nil }
-            return (item.name, value)
-        }, uniquingKeysWith: { first, _ in first })
-
-        switch host {
-        case "config":
-            if let bridge = params["bridge"], !bridge.isEmpty {
-                UserDefaults.standard.set(bridge, forKey: "bridgeBase")
-                NSLog("[Vox] bridge URL set to \(bridge)")
-            }
-        default:
-            break
+        if VoxRuntimeConfig.applyDeepLink(url) {
+            NSLog("[Vox] bridge URL set to \(VoxRuntimeConfig.bridgeBase)")
         }
     }
 }

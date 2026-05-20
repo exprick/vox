@@ -4,9 +4,8 @@ Vox is a local-first voice English tutor prototype.
 
 It combines:
 
-- an iOS SwiftUI shell with a Voice tab and a Drill tab
+- an iOS SwiftUI Vox Voice surface that adapts the same product shipped at `https://vox.exp.game/`
 - a Node.js bridge that serves the web app, gates Realtime sessions, and stores voice recordings
-- a WKWebView drill surface for generated HTML practice activities
 
 ## Status
 
@@ -75,7 +74,8 @@ open Vox.xcodeproj
 For device install via script, provide your own IDs:
 
 ```bash
-VOX_DEVICE_ECID=... VOX_DEVICE_UUID=... VOX_BUNDLE_ID=com.example.vox bash scripts/build-install.sh
+VOX_DEVICE_ECID=... VOX_DEVICE_UUID=... VOX_BRIDGE_BASE=http://<mac-lan-ip>:3203 VOX_BUNDLE_ID=game.exp.vox bash scripts/build-install.sh
+npm run test:e2e:ios:smoke -- --voice
 ```
 
 ## Public Repo Rules

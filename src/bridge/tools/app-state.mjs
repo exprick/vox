@@ -1,19 +1,18 @@
 // Bridge-side mirror of what the iOS app is showing right now. iPhone POSTs
-// here on tab switch, drill state change, and on each user/assistant transcript
-// turn. Vox's get_app_state tool reads this so it can answer "what tab am
-// I on" / "what's the score" / "what did I just say" without guessing.
+// here on surface changes and each user/assistant transcript turn. Vox's
+// get_app_state tool reads this so it can answer what is on screen or what
+// the learner just said without guessing.
 
 const STATE = {
-  tab: 'unknown',                  // 'voice' | 'drill' | 'unknown'
-  drill: null,                     // { kind:'fill_blank', topic, questions, answered, correct, wrong, completed } | null
+  surface: 'unknown',              // 'voice' | 'unknown'
   recent_transcript: [],           // [{ role:'user'|'assistant', text, ts }] capped at MAX
   updated_at: 0,
 };
 const TRANSCRIPT_MAX = 20;
 
 export function recordAppState(patch) {
-  if (patch.tab !== undefined) STATE.tab = patch.tab;
-  if (patch.drill !== undefined) STATE.drill = patch.drill;
+  if (patch.surface !== undefined) STATE.surface = patch.surface;
+  if (patch.tab === 'voice') STATE.surface = 'voice';
   if (Array.isArray(patch.transcript_append)) {
     for (const turn of patch.transcript_append) {
       if (turn && typeof turn.role === 'string' && typeof turn.text === 'string') {
@@ -33,8 +32,7 @@ export function getAppStateTool() {
   // window matters and the model just needs the latest snapshot.
   return {
     output: JSON.stringify({
-      tab: STATE.tab,
-      drill: STATE.drill,
+      surface: STATE.surface,
       recent_transcript: STATE.recent_transcript.slice(-10),
       updated_at_ms_ago: STATE.updated_at ? Date.now() - STATE.updated_at : null,
     }),
