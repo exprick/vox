@@ -13,19 +13,21 @@ export function recordingsDir() {
 
 export async function saveRecording({ bytes, mimeType, user, sessionId, startedAt, endedAt, durationMs, transcript, events }) {
   await fs.mkdir(recordingsDir(), { recursive: true });
+  const payloadBytes = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || '');
+  const hasAudioBytes = payloadBytes.length > 0;
   const safeMimeType = normalizeMimeType(mimeType);
   const now = new Date();
   const safeSessionId = sanitizeId(sessionId || `session-${Date.now()}`);
   const recordingId = `${userFilePrefix(user)}${now.toISOString().replace(/[:.]/g, '-')}-${safeSessionId}-${crypto.randomBytes(8).toString('hex')}`;
   const extension = extensionForMime(safeMimeType);
-  const audioFile = `${recordingId}.${extension}`;
+  const audioFile = hasAudioBytes ? `${recordingId}.${extension}` : null;
   const metadataFile = `${recordingId}.json`;
   const transcriptFile = `${recordingId}.transcript.json`;
   const transcriptTextFile = `${recordingId}.transcript.txt`;
   const captionsFile = `${recordingId}.vtt`;
   const subtitlesFile = `${recordingId}.srt`;
   const eventsFile = `${recordingId}.events.json`;
-  const audioPath = path.join(recordingsDir(), audioFile);
+  const audioPath = audioFile ? path.join(recordingsDir(), audioFile) : null;
   const metadataPath = path.join(recordingsDir(), metadataFile);
   const transcriptPath = path.join(recordingsDir(), transcriptFile);
   const transcriptTextPath = path.join(recordingsDir(), transcriptTextFile);
@@ -45,8 +47,9 @@ export async function saveRecording({ bytes, mimeType, user, sessionId, startedA
       email: user.email,
       provider: user.provider,
     },
+    recording_kind: hasAudioBytes ? 'audio' : 'transcript',
     mime_type: safeMimeType,
-    bytes: bytes.length,
+    bytes: payloadBytes.length,
     audio_file: audioFile,
     transcript_file: transcriptFile,
     transcript_text_file: transcriptTextFile,
@@ -62,8 +65,11 @@ export async function saveRecording({ bytes, mimeType, user, sessionId, startedA
     saved_at: now.toISOString(),
   };
 
-  await fs.writeFile(audioPath, bytes, { flag: 'wx' });
-  const createdPaths = [audioPath];
+  const createdPaths = [];
+  if (audioPath) {
+    await fs.writeFile(audioPath, payloadBytes, { flag: 'wx' });
+    createdPaths.push(audioPath);
+  }
   try {
     const writes = [
       [transcriptPath, `${JSON.stringify(normalizedTranscript, null, 2)}\n`],

@@ -78,6 +78,8 @@ VOX_DEVICE_ECID=... VOX_DEVICE_UUID=... VOX_BRIDGE_BASE=http://<mac-lan-ip>:3203
 npm run test:e2e:ios:smoke -- --voice
 ```
 
+LAN bridge URLs are temporary by default, so a real device falls back to `https://vox.exp.game` after a normal relaunch unless `VOX_BRIDGE_PERSIST=1` is set explicitly.
+
 ## Public Repo Rules
 
 - Do not commit `.env`, API keys, device identifiers, private logs, recordings, or generated agent memory.

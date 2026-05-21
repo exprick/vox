@@ -15,7 +15,7 @@
 # Optional:
 #   VOX_BUNDLE_ID     bundle id to launch after install
 #   VOX_BRIDGE_BASE   bridge URL reachable by the device, e.g. http://192.168.1.10:3203
-#   VOX_BRIDGE_PERSIST  set 0 for temporary E2E bridges so the app does not keep a dead URL
+#   VOX_BRIDGE_PERSIST  defaults to 0 for localhost/LAN bridges and 1 otherwise
 #   DEVELOPMENT_TEAM  Apple team id for local signing, if not already set in Xcode
 
 set -euo pipefail
@@ -79,7 +79,17 @@ echo "==> devicectl launch (foreground)"
 LAUNCH_ARGS=(device process launch --device "$DEVICE_UUID" --terminate-existing "$BUNDLE_ID")
 if [[ -n "${VOX_BRIDGE_BASE:-}" ]]; then
   ENV_JSON=$(VOX_BRIDGE_BASE="$VOX_BRIDGE_BASE" node -e 'console.log(JSON.stringify({VOX_BRIDGE_BASE: process.env.VOX_BRIDGE_BASE}))')
-  PAYLOAD_URL=$(VOX_BRIDGE_BASE="$VOX_BRIDGE_BASE" VOX_BRIDGE_PERSIST="${VOX_BRIDGE_PERSIST:-1}" node -e 'const qs = new URLSearchParams({ bridge: process.env.VOX_BRIDGE_BASE, persist: process.env.VOX_BRIDGE_PERSIST }); console.log(`vox://config?${qs}`)')
+  if [[ -z "${VOX_BRIDGE_PERSIST:-}" ]]; then
+    case "$VOX_BRIDGE_BASE" in
+      http://127.*|http://localhost*|http://10.*|http://172.1[6-9].*|http://172.2[0-9].*|http://172.3[0-1].*|http://192.168.*)
+        VOX_BRIDGE_PERSIST=0
+        ;;
+      *)
+        VOX_BRIDGE_PERSIST=1
+        ;;
+    esac
+  fi
+  PAYLOAD_URL=$(VOX_BRIDGE_BASE="$VOX_BRIDGE_BASE" VOX_BRIDGE_PERSIST="$VOX_BRIDGE_PERSIST" node -e 'const qs = new URLSearchParams({ bridge: process.env.VOX_BRIDGE_BASE, persist: process.env.VOX_BRIDGE_PERSIST }); console.log(`vox://config?${qs}`)')
   LAUNCH_ARGS+=(--environment-variables "$ENV_JSON" --payload-url "$PAYLOAD_URL")
 fi
 xcrun devicectl "${LAUNCH_ARGS[@]}" >/dev/null

@@ -296,6 +296,20 @@
       display: none;
     }
 
+    .restart-session-btn {
+      min-height: 34px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .restart-session-btn[hidden] {
+      display: none;
+    }
+
     .pulse {
       width: 12px;
       height: 12px;
@@ -876,6 +890,16 @@
       font-weight: 600;
     }
 
+    .public-learner-shell .restart-session-btn {
+      min-height: 30px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(255, 246, 236, 0.28);
+      color: rgba(39, 20, 15, 0.56);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
     @keyframes micPulse {
       0% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 0 rgba(180, 66, 53, 0.30); }
       72% { box-shadow: 0 10px 30px rgba(180, 66, 53, 0.28), 0 0 0 18px rgba(180, 66, 53, 0); }
@@ -1012,6 +1036,9 @@
           </button>
           <div class="meta">
             <button class="secondary-btn end-call-btn" type="button" id="endCallButton" hidden>End</button>
+            <button class="secondary-btn restart-session-btn" type="button" id="restartSessionButton" hidden>
+              <span aria-hidden="true">↻</span><span>New session</span>
+            </button>
             <small id="recordingState">Recording starts with every session.</small>
             <small id="transportState">WebRTC idle</small>
           </div>
@@ -1049,6 +1076,7 @@
       subtitleStatus: document.getElementById("subtitleStatus"),
       callButton: document.getElementById("callButton"),
       endCallButton: document.getElementById("endCallButton"),
+      restartSessionButton: document.getElementById("restartSessionButton"),
       turns: document.getElementById("turns"),
       remoteAudio: document.getElementById("remoteAudio"),
       recordingState: document.getElementById("recordingState"),
@@ -1069,7 +1097,8 @@
     const SUBTITLE_RETRY_AFTER_MS = 15000;
     const SUBTITLE_MAX_TRIES = 2;
     const RECORDING_HEADER_MAX_CHARS = 6000;
-    const ASSISTANT_PLAYBACK_COOLDOWN_MS = 1000;
+    const ASSISTANT_PLAYBACK_COOLDOWN_MS = 2200;
+    const ASSISTANT_ECHO_GUARD_MS = 5000;
     const MIC_AUDIO_CONSTRAINTS = [
       {
         echoCancellation: { ideal: "all" },
@@ -1131,6 +1160,7 @@
       pendingManualMicOpen: false,
       assistantPlaybackCoolingDown: false,
       assistantPlaybackCooldownTimer: null,
+      assistantEchoGuardUntilMs: 0,
       subtitleBackfillRunning: false,
       subtitleRetryTimer: null,
       realtimeEvents: [],
@@ -1180,6 +1210,9 @@
     });
     els.endCallButton.addEventListener("click", () => {
       if (state.phase === "live" || state.phase === "connecting") stopCall();
+    });
+    els.restartSessionButton.addEventListener("click", () => {
+      restartConversationSession();
     });
 
     async function init() {
@@ -1293,6 +1326,7 @@
       state.inputCommitEchoText = "";
       state.assistantOutputActive = false;
       state.assistantEchoText = "";
+      state.assistantEchoGuardUntilMs = 0;
       state.lastAssistantText = "";
       state.serverCreatesResponses = false;
       state.manualInputTurns = false;
@@ -1481,6 +1515,7 @@
     }
 
     function startAssistantPlaybackCooldown() {
+      extendAssistantEchoGuard();
       if (!state.manualInputTurns || state.phase !== "live") return;
       clearAssistantPlaybackCooldown();
       state.assistantPlaybackCoolingDown = true;
@@ -1498,6 +1533,10 @@
         state.assistantPlaybackCooldownTimer = null;
       }
       state.assistantPlaybackCoolingDown = false;
+    }
+
+    function extendAssistantEchoGuard() {
+      state.assistantEchoGuardUntilMs = Date.now() + ASSISTANT_ECHO_GUARD_MS;
     }
 
     function stopCall({ failed = false } = {}) {
@@ -1561,12 +1600,22 @@
       state.inputCommitEchoText = "";
       state.assistantOutputActive = false;
       state.assistantEchoText = "";
+      state.assistantEchoGuardUntilMs = 0;
       state.lastAssistantText = "";
       state.manualInputTurns = false;
       state.micOpen = false;
       state.pendingManualMicOpen = false;
       clearAssistantPlaybackCooldown();
       els.remoteAudio.srcObject = null;
+    }
+
+    async function restartConversationSession() {
+      if (!state.user || state.stoppingCall || state.phase === "booting" || state.phase === "signed_out") return;
+      if (state.phase === "live" || state.phase === "connecting") {
+        await stopCall();
+      }
+      if (!state.user || state.phase === "signed_out" || state.stoppingCall) return;
+      await startCall({ openMicWhenLive: true });
     }
 
     function stopStream() {
@@ -2053,7 +2102,8 @@
       const text = String(transcript || "").trim();
       if (!text) return true;
       const echoWindowActive = state.assistantOutputActive ||
-        state.inputCommitDuringAssistantOutput;
+        state.inputCommitDuringAssistantOutput ||
+        Date.now() <= Number(state.assistantEchoGuardUntilMs || 0);
       if (echoWindowActive && isLikelyAssistantEcho(text, currentAssistantEchoText())) return true;
       return false;
     }
@@ -2067,7 +2117,20 @@
       const assistantLength = hasCompactSpeechScript(assistant) ? 8 : 24;
       return assistant === input ||
         assistant.startsWith(input) ||
+        (assistant.length >= assistantLength && hasOrderedSpeechTokenMatch(input, assistant)) ||
         (assistant.length >= assistantLength && input.startsWith(assistant) && isShortSpeechArtifact(input.slice(assistant.length)));
+    }
+
+    function hasOrderedSpeechTokenMatch(input, assistant) {
+      const inputTokens = input.split(/\s+/).filter(Boolean);
+      const assistantTokens = assistant.split(/\s+/).filter(Boolean);
+      if (inputTokens.length < 3 || assistantTokens.length < inputTokens.length) return false;
+      let cursor = 0;
+      for (const token of assistantTokens) {
+        if (token === inputTokens[cursor]) cursor += 1;
+        if (cursor === inputTokens.length) return true;
+      }
+      return false;
     }
 
     function isShortSpeechArtifact(value) {
@@ -2387,6 +2450,9 @@
       els.callButton.disabled = buttonDisabled || state.stoppingCall;
       els.endCallButton.hidden = !active;
       els.endCallButton.disabled = !active || state.stoppingCall;
+      const canShowRestart = signedIn && state.phase !== "booting" && state.phase !== "signed_out";
+      els.restartSessionButton.hidden = !canShowRestart;
+      els.restartSessionButton.disabled = !canShowRestart || state.phase === "connecting" || state.stoppingCall;
       if (!active && state.phase !== "ended") {
         els.transportState.textContent = "WebRTC idle";
       }

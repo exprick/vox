@@ -246,6 +246,9 @@ test('Vox system prompt is conversation-first bilingual coaching, not forced dri
     assert.match(text, /Default to a natural Chinese-English mix/);
     assert.match(text, /Treat the learner's topic as the real topic/);
     assert.match(text, /do not force an immediate English retry/i);
+    assert.match(text, /stop using the previous guess/i);
+    assert.match(text, /做吃的那个茄子/);
+    assert.match(text, /eggplant \/ aubergine/);
     assert.match(text, /use the relevant tool instead of turning it into an English exercise/i);
     assert.doesNotMatch(text, /guide them back to English practice/i);
     assert.doesNotMatch(text, /Direct practice replies/i);
@@ -299,14 +302,18 @@ test('web voice course uses push-to-talk manual input turns for speaker echo con
   assert.match(html, /type:\s*"input_audio_buffer\.commit"/);
   assert.match(html, /function setMicrophoneOpen\(open/);
   assert.match(html, /track\.enabled = open/);
-  assert.match(html, /ASSISTANT_PLAYBACK_COOLDOWN_MS/);
+  assert.match(html, /const ASSISTANT_PLAYBACK_COOLDOWN_MS = 2200/);
+  assert.match(html, /const ASSISTANT_ECHO_GUARD_MS = 5000/);
   assert.match(html, /return "Start speaking"/);
   assert.match(html, /return "Send"/);
   assert.match(html, /id="endCallButton"/);
+  assert.match(html, /id="restartSessionButton"/);
+  assert.match(html, /function restartConversationSession\(\)/);
 });
 
 test('iOS native voice uses continuous listening with local speaker echo control', async () => {
   const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
+  const voiceView = await fs.readFile(new URL('../ios/Sources/VoiceCallView.swift', import.meta.url), 'utf8');
   const pollClient = await fs.readFile(new URL('../ios/Sources/PollClient.swift', import.meta.url), 'utf8');
   const runtimeConfig = await fs.readFile(new URL('../ios/Sources/VoxRuntimeConfig.swift', import.meta.url), 'utf8');
   const app = await fs.readFile(new URL('../ios/Sources/VoxApp.swift', import.meta.url), 'utf8');
@@ -332,6 +339,10 @@ test('iOS native voice uses continuous listening with local speaker echo control
   assert.match(swift, /private func setMicrophoneOpen\(_ open: Bool, reason: String\)[\s\S]*audioTrack\?\.isEnabled = open/);
   assert.match(swift, /func pauseListening\(\)/);
   assert.match(swift, /func resumeListening\(\)/);
+  assert.match(swift, /private let assistantPlaybackCooldownMs: Int = 2200/);
+  assert.match(swift, /private let assistantEchoGuardMs: Int = 5000/);
+  assert.match(swift, /func restartConversationSession\(\) async/);
+  assert.match(voiceView, /private var showsRestartButton: Bool[\s\S]*case \.connecting:[\s\S]*return false[\s\S]*default:[\s\S]*return true/);
 
   assert.match(pollClient, /case "begin_manual_input_turn"/);
   assert.match(pollClient, /case "finish_manual_input_turn"/);
@@ -364,11 +375,20 @@ test('iOS native transcript keeps scrollable conversation history', async () => 
   assert.match(swift, /appendTranscriptTurn\(role: \.user, text: transcript\)/);
   assert.match(swift, /private func updateAssistantDraft\(_ text: String\)/);
   assert.match(swift, /private func finalizeAssistantDraft\(_ text: String\)/);
+  assert.match(swift, /@Published var transcriptSaveStatus: String = ""/);
+  assert.match(swift, /queueSessionTranscriptSave\(reason: "disconnect"\)/);
+  assert.match(swift, /queueSessionTranscriptSave\(reason: "restart"\)/);
+  assert.match(swift, /\/api\/session-transcript/);
   assert.match(swift, /if transcriptTurns\.count > 80/);
   assert.match(swift, /"transcriptTurns": transcriptTurns\.suffix\(12\)\.map/);
+  assert.match(swift, /"transcriptSaveStatus": transcriptSaveStatus/);
   assert.match(swift, /"role": turn\.role\.rawValue/);
   assert.match(swift, /"isCurrent": turn\.isCurrent/);
   assert.match(voiceView, /client\.transcriptTurns\.map/);
+  assert.match(voiceView, /client\.restartConversationSession\(\)/);
+  assert.match(voiceView, /Restart conversation session/);
+  assert.match(voiceView, /footerStatusText/);
+  assert.match(voiceView, /client\.transcriptSaveStatus/);
   assert.doesNotMatch(voiceView, /let user = client\.lastUserUtterance/);
   assert.doesNotMatch(voiceView, /let assistant = client\.lastAssistantText/);
 });
@@ -443,6 +463,7 @@ test('iOS bridge config keeps temporary E2E bridge URLs out of persistent settin
   assert.ok(envIndex < defaultsIndex, 'launch env should win over stale UserDefaults bridge URL');
 
   assert.match(runtimeConfig, /static func setBridgeBase\(_ value: String, persist: Bool = true\) -> Bool/);
+  assert.match(runtimeConfig, /defaultBridgeBase = "https:\/\/vox\.exp\.game"/);
   assert.match(runtimeConfig, /if persist \{[\s\S]*UserDefaults\.standard\.set\(trimmed, forKey: bridgeBaseKey\)[\s\S]*bridgeBaseOverride = nil[\s\S]*\} else \{[\s\S]*bridgeBaseOverride = trimmed/);
   assert.match(runtimeConfig, /let persistValue = comps\.queryItems\?\.[\s\S]*first\(where: \{ \$0\.name == "persist" \}/);
   assert.match(runtimeConfig, /!\["0", "false", "no"\]\.contains\(persistValue\)/);
@@ -451,6 +472,8 @@ test('iOS bridge config keeps temporary E2E bridge URLs out of persistent settin
   assert.match(pollClient, /VoxRuntimeConfig\.setBridgeBase\(value, persist: persist\)/);
 
   assert.match(buildInstall, /VOX_BRIDGE_PERSIST/);
+  assert.match(buildInstall, /VOX_BRIDGE_PERSIST=0/);
+  assert.match(buildInstall, /http:\/\/192\.168\.\*/);
   assert.match(buildInstall, /URLSearchParams\(\{ bridge: process\.env\.VOX_BRIDGE_BASE, persist: process\.env\.VOX_BRIDGE_PERSIST \}\)/);
   assert.match(buildInstall, /vox:\/\/config\?\$\{qs\}/);
 });
@@ -636,9 +659,12 @@ test('realtime clients suppress assistant echo transcripts before creating user 
   const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
   assert.match(html, /function shouldIgnoreInputTranscript\(transcript\)/);
   assert.match(html, /state\.assistantOutputActive[\s\S]*state\.inputCommitDuringAssistantOutput/);
+  assert.match(html, /assistantEchoGuardUntilMs/);
+  assert.match(html, /Date\.now\(\) <= Number\(state\.assistantEchoGuardUntilMs \|\| 0\)/);
   assert.match(html, /function currentAssistantEchoText\(\)/);
   assert.match(html, /function rememberAssistantEchoText\(\)/);
   assert.match(html, /function isShortSpeechArtifact\(value\)/);
+  assert.match(html, /function hasOrderedSpeechTokenMatch\(input, assistant\)/);
   assert.doesNotMatch(html, /function isAssistantEchoGuardActive\(\)/);
   assert.match(html, /function hasCompactSpeechScript\(value\)/);
   assert.match(html, /Script=Thai/);
@@ -654,10 +680,13 @@ test('realtime clients suppress assistant echo transcripts before creating user 
 
   const swift = await fs.readFile(new URL('../ios/Sources/RealtimeClientWebRTC.swift', import.meta.url), 'utf8');
   assert.match(swift, /private func shouldIgnoreInputTranscript\(_ transcript: String\) -> Bool/);
-  assert.match(swift, /assistantOutputActive \|\| inputCommitDuringAssistantOutput/);
+  assert.match(swift, /assistantOutputActive[\s\S]*inputCommitDuringAssistantOutput/);
+  assert.match(swift, /assistantEchoGuardUntil/);
+  assert.match(swift, /Date\(\)\.timeIntervalSince1970 <= assistantEchoGuardUntil/);
   assert.match(swift, /private func currentAssistantEchoText\(\) -> String/);
   assert.match(swift, /private func rememberAssistantEchoText\(\)/);
   assert.match(swift, /private func isShortSpeechArtifact\(_ value: String\) -> Bool/);
+  assert.match(swift, /private func hasOrderedSpeechTokenMatch\(_ input: String, _ assistant: String\) -> Bool/);
   assert.doesNotMatch(swift, /private func isAssistantEchoGuardActive\(\) -> Bool/);
   assert.match(swift, /private func containsCompactSpeechScript/);
   assert.match(swift, /0x0E00\.\.\.0x0E7F/);
@@ -675,14 +704,27 @@ test('realtime clients suppress assistant echo transcripts before creating user 
   assert.doesNotMatch(voiceSource, /vox_turn_detection:\s*session\.audio\.input\.turn_detection/);
 });
 
-test('web assistant echo guard only suppresses transcripts committed during assistant output', async () => {
+test('web assistant echo guard suppresses delayed playback echo without blocking real turns', async () => {
   const html = await fs.readFile(new URL('../web/voice-course/index.html', import.meta.url), 'utf8');
   const assistantText = "Hi there! How's it going? What would you like to practice today?";
+  const activeGuard = Date.now() + 60_000;
 
   assert.equal(runWebEchoGuard(html, {
     inputCommitDuringAssistantOutput: true,
     inputCommitEchoText: assistantText,
   }, 'Hi there!'), true);
+
+  assert.equal(runWebEchoGuard(html, {
+    assistantEchoText: assistantText,
+    lastAssistantText: assistantText,
+    assistantEchoGuardUntilMs: activeGuard,
+  }, 'Hi there!'), true);
+
+  assert.equal(runWebEchoGuard(html, {
+    assistantEchoText: assistantText,
+    lastAssistantText: assistantText,
+    assistantEchoGuardUntilMs: Date.now() - 1,
+  }, 'Hi there!'), false);
 
   assert.equal(runWebEchoGuard(html, {
     assistantOutputActive: true,
@@ -694,6 +736,17 @@ test('web assistant echo guard only suppresses transcripts committed during assi
     inputCommitDuringAssistantOutput: true,
     inputCommitEchoText: "Let's practice ordering food at a restaurant.",
   }, "Let's practice ordering food at a restaurant uh"), true);
+
+  assert.equal(runWebEchoGuard(html, {
+    inputCommitDuringAssistantOutput: true,
+    inputCommitEchoText: "I'm doing well, thanks for asking. Where are you today?",
+  }, "I'm doing asking"), true);
+
+  assert.equal(runWebEchoGuard(html, {
+    assistantEchoText: "That's great to hear. What's on your mind for today’s practice?",
+    lastAssistantText: "That's great to hear. What's on your mind for today’s practice?",
+    assistantEchoGuardUntilMs: activeGuard,
+  }, "That's great to hear."), true);
 
   assert.equal(runWebEchoGuard(html, {
     assistantEchoText: assistantText,
@@ -810,6 +863,36 @@ test('empty recording duration is stored as null', async (t) => {
   assert.equal(result.duration_ms, null);
 });
 
+test('iOS transcript-only sessions save without requiring audio bytes', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vox-recordings-transcript-test-'));
+  t.after(withEnv({ VOX_RECORDINGS_DIR: dir }));
+  const user = { id: 'u_ios', email: 'rick@exp.game', provider: 'test' };
+  const result = await saveRecording({
+    bytes: Buffer.alloc(0),
+    mimeType: 'application/vnd.vox.session-transcript+json',
+    user,
+    sessionId: 'ios-session',
+    transcript: [
+      { role: 'user', text: 'cheer up', ts: 1000 },
+      { role: 'assistant', text: 'Let’s practice that phrase once.', ts: 1500 },
+    ],
+    events: [
+      { type: 'response.done', ts: 2000 },
+    ],
+  });
+
+  assert.equal(result.recording_kind, 'transcript');
+  assert.equal(result.bytes, 0);
+  assert.equal(result.audio_file, null);
+  assert.equal(result.transcript_count, 2);
+  const files = await fs.readdir(dir);
+  assert.equal(files.some((file) => file.endsWith('.webm') || file.endsWith('.mp3') || file.endsWith('.wav')), false);
+  assert.equal(files.filter((file) => file.endsWith('.transcript.txt')).length, 1);
+  const serverSource = await fs.readFile(new URL('../src/bridge/server.mjs', import.meta.url), 'utf8');
+  assert.match(serverSource, /POST \/api\/session-transcript/);
+  assert.match(serverSource, /Buffer\.alloc\(0\)/);
+});
+
 test('recording listing filters by user before applying limit', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vox-recordings-list-test-'));
   t.after(withEnv({ VOX_RECORDINGS_DIR: dir }));
@@ -917,6 +1000,7 @@ function runWebEchoGuard(html, statePatch, transcript) {
       assistantDraft: '',
       assistantEchoText: '',
       lastAssistantText: '',
+      assistantEchoGuardUntilMs: 0,
       assistantOutputActive: false,
       inputCommitDuringAssistantOutput: false,
       ...statePatch,

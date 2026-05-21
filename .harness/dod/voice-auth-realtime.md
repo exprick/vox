@@ -71,6 +71,8 @@ TF impact: not-needed — last review cleanup removes stale echo state and avoid
 
 TF impact: not-needed — latest push-review cleanup only narrows error recovery and sidecar cleanup behavior; the user-facing voice-and-recording promise is unchanged.
 
+TF impact: not-needed — iOS restart control, transcript-only save status, echo suppression, correction prompt, and bridge URL drift fixes harden the already documented live voice, recording, and adaptive conversation promises without adding a separate product capability.
+
 TF impact: not-needed — final push-review cleanup keeps the same promise while preserving queued-response recovery and failed sidecar write cleanup without filtering learner repetitions after the assistant finishes.
 
 TF impact: not-needed — review-driven edge fixes broaden echo matching scripts, keep response requests queued until the data channel opens, and prevent subtitle cues from collapsing on short duration metadata.

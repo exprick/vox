@@ -2,6 +2,7 @@ import Foundation
 
 enum VoxRuntimeConfig {
     private static let bridgeBaseKey = "bridgeBase"
+    private static let defaultBridgeBase = "https://vox.exp.game"
     private static var bridgeBaseOverride: String?
 
     static var bridgeBase: String {
@@ -14,7 +15,7 @@ enum VoxRuntimeConfig {
         if let value = UserDefaults.standard.string(forKey: bridgeBaseKey), !value.isEmpty {
             return value
         }
-        return "http://127.0.0.1:3203"
+        return defaultBridgeBase
     }
 
     @discardableResult

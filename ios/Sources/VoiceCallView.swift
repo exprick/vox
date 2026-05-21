@@ -167,7 +167,27 @@ struct VoiceCallView: View {
                     .buttonStyle(.plain)
                 }
 
-                Text(transportText)
+                if showsRestartButton {
+                    Button(action: { Task { await client.restartConversationSession() } }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("New")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(VoxPalette.ink.opacity(0.56))
+                        .frame(height: 30)
+                        .padding(.horizontal, 12)
+                        .background(VoxPalette.cream.opacity(0.28))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(restartButtonDisabled)
+                    .opacity(restartButtonDisabled ? 0.55 : 1)
+                    .accessibilityLabel("Restart conversation session")
+                }
+
+                Text(footerStatusText)
                     .font(.system(size: 12))
                     .foregroundStyle(VoxPalette.ink.opacity(0.50))
                     .lineLimit(1)
@@ -319,6 +339,19 @@ struct VoiceCallView: View {
         }
     }
 
+    private var showsRestartButton: Bool {
+        switch client.state {
+        case .connecting:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private var restartButtonDisabled: Bool {
+        client.state == .connecting
+    }
+
     private var transportText: String {
         switch client.state {
         case .connected:
@@ -333,6 +366,13 @@ struct VoiceCallView: View {
         default:
             return "WebRTC idle"
         }
+    }
+
+    private var footerStatusText: String {
+        if !client.transcriptSaveStatus.isEmpty {
+            return client.transcriptSaveStatus
+        }
+        return transportText
     }
 
     private func currentTextSize(for text: String) -> CGFloat {

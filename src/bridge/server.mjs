@@ -144,6 +144,23 @@ const server = http.createServer(async (req, res) => {
       respond(res, 200, { ok: true, recording: metadata });
       return;
     }
+    if (route === 'POST /api/session-transcript') {
+      const user = await authenticateRequest(req);
+      const body = await readBody(req);
+      const metadata = await saveRecording({
+        bytes: Buffer.alloc(0),
+        mimeType: 'application/vnd.vox.session-transcript+json',
+        user,
+        sessionId: body.session_id,
+        startedAt: body.started_at,
+        endedAt: body.ended_at,
+        durationMs: body.duration_ms,
+        transcript: body.transcript,
+        events: body.events,
+      });
+      respond(res, 200, { ok: true, recording: metadata });
+      return;
+    }
     if (route === 'GET /api/recordings') {
       const user = await authenticateRequest(req);
       const recordings = await listRecordings({ user });

@@ -50,6 +50,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     @Published var assistantPlaybackCoolingDown: Bool = false { didSet { reportState(reason: "playback_cooldown") } }
     @Published var isListeningPaused: Bool = false { didSet { reportState(reason: "listening_paused") } }
     @Published var transcriptTurns: [TranscriptTurn] = []
+    @Published var transcriptSaveStatus: String = ""
 
     private var bridgeBase: String { VoxRuntimeConfig.bridgeBase }
 
@@ -82,8 +83,15 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private var pendingUserTranscriptTimestamp: TimeInterval?
     private var pendingUserTranscriptGeneration: Int = 0
     private var assistantPlaybackCooldownGeneration: Int = 0
-    private let assistantPlaybackCooldownMs: Int = 800
+    private let assistantPlaybackCooldownMs: Int = 2200
+    private let assistantEchoGuardMs: Int = 5000
+    private var assistantEchoGuardUntil: TimeInterval = 0
     private var reconnectGeneration: Int = 0
+    private var sessionId: String = UUID().uuidString
+    private var sessionStartedAt: Date?
+    private var sessionEvents: [[String: Any]] = []
+    private var transcriptSavedForSessionId: String?
+    private var transcriptSaveInFlight: Bool = false
 
     /// Bumped on disconnect / new connect attempt. Lets a connect() resumed
     /// from suspension see that the user has moved on, and abort instead of
@@ -109,6 +117,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         let myGen = connectGeneration
         disconnecting = false
         isListeningPaused = false
+        beginSessionTranscriptCapture()
 
         if !(await ensureMicPermission()) {
             lastError = "Microphone access denied. Open Settings → Vox → Microphone to enable."
@@ -140,7 +149,14 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        disconnect(saveTranscript: true)
+    }
+
+    private func disconnect(saveTranscript: Bool) {
         log("disconnect")
+        if saveTranscript {
+            queueSessionTranscriptSave(reason: "disconnect")
+        }
         // Bump generation FIRST so any in-flight connect() suspended on an
         // await sees myGen != current and aborts on resume. Without this, a
         // user-initiated disconnect mid-connect can be undone by the older
@@ -149,6 +165,17 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         disconnecting = true
         cleanup()
         state = .closed
+    }
+
+    func restartConversationSession() async {
+        log("restart conversation session")
+        queueSessionTranscriptSave(reason: "restart")
+        disconnect(saveTranscript: false)
+        transcriptTurns = []
+        lastUserUtterance = ""
+        lastAssistantText = ""
+        lastError = nil
+        await connect()
     }
 
     func ensureMicPermission() async -> Bool {
@@ -186,6 +213,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
             "assistantPlaybackCoolingDown": assistantPlaybackCoolingDown,
             "isListeningPaused": isListeningPaused,
             "transcriptTurnCount": transcriptTurns.count,
+            "transcriptSaveStatus": transcriptSaveStatus,
             "transcriptTurns": transcriptTurns.suffix(12).map { turn in
                 [
                     "role": turn.role.rawValue,
@@ -358,6 +386,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         assistantBuffer = ""
         assistantOutputActive = false
         assistantEchoText = ""
+        assistantEchoGuardUntil = 0
         lastAssistantText = ""
         serverCreatesResponses = false
         manualInputTurns = false
@@ -376,6 +405,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private func handleDataChannelMessage(_ data: Data) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else { return }
+        recordRealtimeEvent(json, type: type)
 
         switch type {
         case "response.created":
@@ -678,6 +708,7 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
 
     private func startAssistantPlaybackCooldown() {
         guard state == .connected else { return }
+        extendAssistantEchoGuard()
         assistantPlaybackCooldownGeneration += 1
         let generation = assistantPlaybackCooldownGeneration
         assistantPlaybackCoolingDown = true
@@ -813,9 +844,15 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
     private func shouldIgnoreInputTranscript(_ transcript: String) -> Bool {
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return true }
-        let echoWindowActive = assistantOutputActive || inputCommitDuringAssistantOutput
+        let echoWindowActive = assistantOutputActive ||
+            inputCommitDuringAssistantOutput ||
+            Date().timeIntervalSince1970 <= assistantEchoGuardUntil
         if echoWindowActive && isLikelyAssistantEcho(text, currentAssistantEchoText()) { return true }
         return false
+    }
+
+    private func extendAssistantEchoGuard() {
+        assistantEchoGuardUntil = Date().timeIntervalSince1970 + Double(assistantEchoGuardMs) / 1000
     }
 
     private func isLikelyAssistantEcho(_ inputValue: String, _ assistantValue: String) -> Bool {
@@ -827,9 +864,24 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         let assistantLength = containsCompactSpeechScript(assistant) ? 8 : 24
         return assistant == input ||
             assistant.hasPrefix(input) ||
+            (assistant.count >= assistantLength && hasOrderedSpeechTokenMatch(input, assistant)) ||
             (assistant.count >= assistantLength &&
                 input.hasPrefix(assistant) &&
                 isShortSpeechArtifact(String(input.dropFirst(assistant.count))))
+    }
+
+    private func hasOrderedSpeechTokenMatch(_ input: String, _ assistant: String) -> Bool {
+        let inputTokens = input.split(separator: " ").map(String.init)
+        let assistantTokens = assistant.split(separator: " ").map(String.init)
+        if inputTokens.count < 3 || assistantTokens.count < inputTokens.count { return false }
+        var cursor = 0
+        for token in assistantTokens {
+            if token == inputTokens[cursor] {
+                cursor += 1
+                if cursor == inputTokens.count { return true }
+            }
+        }
+        return false
     }
 
     private func isShortSpeechArtifact(_ value: String) -> Bool {
@@ -977,6 +1029,112 @@ final class RealtimeClientWebRTC: NSObject, ObservableObject {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = data
         URLSession.shared.dataTask(with: req).resume()
+    }
+
+    private func beginSessionTranscriptCapture() {
+        sessionId = UUID().uuidString
+        sessionStartedAt = Date()
+        sessionEvents = []
+        transcriptSavedForSessionId = nil
+        transcriptSaveInFlight = false
+        transcriptSaveStatus = "Transcript saves when you end."
+    }
+
+    private func queueSessionTranscriptSave(reason: String) {
+        guard !transcriptSaveInFlight else { return }
+        guard transcriptSavedForSessionId != sessionId else { return }
+        guard let data = sessionTranscriptPayload(reason: reason) else {
+            if !transcriptTurns.isEmpty {
+                transcriptSaveStatus = "Transcript save failed."
+            }
+            return
+        }
+        transcriptSaveInFlight = true
+        transcriptSaveStatus = "Saving transcript..."
+        let savedSessionId = sessionId
+        Task { [weak self] in
+            await self?.postSessionTranscript(data, savedSessionId: savedSessionId)
+        }
+    }
+
+    private func sessionTranscriptPayload(reason: String) -> Data? {
+        let turns = transcriptTurns
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { turn in
+                [
+                    "id": turn.id,
+                    "role": turn.role.rawValue,
+                    "text": turn.text,
+                    "ts": Int(turn.ts * 1000),
+                ] as [String: Any]
+            }
+        guard !turns.isEmpty else { return nil }
+        let endedAt = Date()
+        let startedAt = sessionStartedAt ?? endedAt
+        let payload: [String: Any] = [
+            "source": "ios",
+            "reason": reason,
+            "session_id": sessionId,
+            "started_at": iso8601(startedAt),
+            "ended_at": iso8601(endedAt),
+            "duration_ms": Int(endedAt.timeIntervalSince(startedAt) * 1000),
+            "transcript": turns,
+            "events": sessionEvents,
+        ]
+        return try? JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private func postSessionTranscript(_ data: Data, savedSessionId: String) async {
+        defer { transcriptSaveInFlight = false }
+        guard let url = URL(string: "\(bridgeBase)/api/session-transcript") else {
+            transcriptSaveStatus = "Transcript save failed."
+            return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = data
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+                log("transcript save failed: HTTP \(code)")
+                transcriptSaveStatus = "Transcript save failed."
+                return
+            }
+            transcriptSavedForSessionId = savedSessionId
+            transcriptSaveStatus = sessionId == savedSessionId ? "Transcript saved." : "Previous transcript saved."
+        } catch {
+            log("transcript save failed: \(error.localizedDescription)")
+            transcriptSaveStatus = "Transcript save failed."
+        }
+    }
+
+    private func recordRealtimeEvent(_ event: [String: Any], type: String) {
+        if type == "response.audio.delta" || type == "response.output_audio.delta" { return }
+        var entry: [String: Any] = [
+            "type": String(type.prefix(96)),
+            "ts": Int(Date().timeIntervalSince1970 * 1000),
+        ]
+        if let text = event["transcript"] as? String ?? event["text"] as? String ?? event["delta"] as? String,
+           !text.isEmpty {
+            entry["text"] = String(text.prefix(1000))
+        }
+        if let error = event["error"] as? [String: Any],
+           let message = error["message"] as? String,
+           !message.isEmpty {
+            entry["message"] = String(message.prefix(1000))
+        } else if let message = event["message"] as? String, !message.isEmpty {
+            entry["message"] = String(message.prefix(1000))
+        }
+        sessionEvents.append(entry)
+        if sessionEvents.count > 300 {
+            sessionEvents = Array(sessionEvents.suffix(300))
+        }
+    }
+
+    private func iso8601(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     // MARK: - permission + diagnostics
